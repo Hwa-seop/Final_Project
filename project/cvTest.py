@@ -2,12 +2,13 @@ import cv2
 import numpy as np
 from datetime import datetime
 
-# 붉은 계열 HSV 범위
+# 빨강 HSV
 lower_red1 = np.array([0, 100, 100])
 upper_red1 = np.array([10, 255, 255])
 lower_red2 = np.array([160, 100, 100])
 upper_red2 = np.array([180, 255, 255])
 
+# 카메라 상태
 cap = cv2.VideoCapture(0)
 alert_active = False
 blink_state = False
@@ -56,7 +57,7 @@ while True:
                 (x, y, w, h) = cv2.boundingRect(c)
                 center = (x + w // 2, y + h // 2)
                 inside = cv2.pointPolygonTest(zone_poly, center, False)
-                if inside >= 0 and zone_locked:  # ✅ 고정된 상태에서만 경고 허용
+                if inside >= 0 and zone_locked:  # 고정된 상태에서만 경고 허용
                     alert_active = True
                     break
 
