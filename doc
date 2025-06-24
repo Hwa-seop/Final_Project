@@ -1,0 +1,16 @@
+
+
+sudo apt update
+sudo apt upgrade
+sudo apt install python3-pip python3-opencv libgl1-mesa-glx libgtk2.0-dev libcanberra-gtk-module
+pip3 install numpy
+
+# PyTorch (공식 wheel 다운로드, python 버전에 따라 파일 다름)
+# 아래는 예시, 반드시 Jetson Nano+JetPack 환경에 맞는 wheel로 교체!
+pip3 install torch-xxx.whl
+pip3 install torchvision==xxx
+
+# yolov5 다운로드 및 의존성
+git clone https://github.com/ultralytics/yolov5.git
+cd yolov5
+pip3 install -r requirements.txt
