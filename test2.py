@@ -2,12 +2,6 @@ import cv2
 import numpy as np
 import torch
 
-# 빨강 HSV
-lower_red1 = np.array([0, 100, 100])
-upper_red1 = np.array([10, 255, 255])
-lower_red2 = np.array([160, 100, 100])
-upper_red2 = np.array([180, 255, 255])
-
 # YOLOv5n 모델 사용
 model = torch.hub.load('ultralytics/yolov5', 'yolov5n')
 
@@ -15,8 +9,27 @@ cap = cv2.VideoCapture(0)
 alert_active = False
 blink_state = False
 blink_counter = 0
+
+roi_points = []
 zone_locked = False
-locked_zone_poly = None
+zone_poly = None
+
+def mouse_callback(event, x, y, flags, param):
+    global roi_points, zone_locked, zone_poly
+    if not zone_locked:
+        if event == cv2.EVENT_LBUTTONDOWN:
+            roi_points.append((x, y))
+        elif event == cv2.EVENT_RBUTTONDOWN:  # 오른쪽 클릭 시 마지막 점 삭제
+            if roi_points:
+                roi_points.pop()
+        elif event == cv2.EVENT_MBUTTONDOWN:  # 가운데 버튼(휠) 클릭 시 확정
+            if len(roi_points) >= 3:
+                zone_poly = np.array(roi_points, dtype=np.int32).reshape((-1, 1, 2))
+                zone_locked = True
+                print("[INFO] ROI 영역이 고정되었습니다.")
+
+cv2.namedWindow("Security Alert")
+cv2.setMouseCallback("Security Alert", mouse_callback)
 
 frame_count = 0
 yolo_interval = 5
@@ -28,30 +41,24 @@ while True:
         break
 
     output_frame = frame.copy()
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-    # 감지 영역 설정(다각형 ROI)
-    if not zone_locked:
-        mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
-        mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
-        mask = cv2.bitwise_or(mask1, mask2)
-
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if contours:
-            largest = max(contours, key=cv2.contourArea)
-            zone_poly = cv2.approxPolyDP(largest, 0.02 * cv2.arcLength(largest, True), True)
-        else:
-            zone_poly = None
-    else:
-        zone_poly = locked_zone_poly
+    # ROI 폴리곤 지정 중이면 점/선 미리 그리기
+    if not zone_locked and roi_points:
+        for pt in roi_points:
+            cv2.circle(output_frame, pt, 4, (255, 0, 0), -1)
+        if len(roi_points) > 1:
+            cv2.polylines(output_frame, [np.array(roi_points, dtype=np.int32).reshape((-1, 1, 2))],
+                          isClosed=False, color=(0, 255, 255), thickness=2)
+        cv2.putText(output_frame, "왼쪽클릭=점추가, 오른쪽=삭제, 휠클릭=완료", (20, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
     alert_active = False
     danger_this_frame = False
 
     frame_count += 1
 
-    # YOLO 추론 주기 낮추기
-    if zone_poly is not None and zone_locked:
+    # ROI 다각형이 확정된 뒤에만 YOLO 실행
+    if zone_locked and zone_poly is not None:
         if frame_count % yolo_interval == 0:
             results = model(frame)
             dets = results.xyxy[0].cpu().numpy()
@@ -82,16 +89,17 @@ while True:
                 blink_state = not blink_state
 
             if blink_state:
-                cv2.drawContours(output_frame, [zone_poly], -1, (0, 0, 255), 3)
+                cv2.polylines(output_frame, [zone_poly], isClosed=True, color=(0, 0, 255), thickness=3)
                 cv2.putText(output_frame, "WARNING!", (30, 50),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
             else:
-                cv2.drawContours(output_frame, [zone_poly], -1, (0, 255, 0), 2)
+                cv2.polylines(output_frame, [zone_poly], isClosed=True, color=(0, 255, 0), thickness=2)
         else:
-            cv2.drawContours(output_frame, [zone_poly], -1, (0, 255, 0), 2)
-    else:
-        cv2.putText(output_frame, "영역이 감지되지 않았습니다", (30, 50),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+            cv2.polylines(output_frame, [zone_poly], isClosed=True, color=(0, 255, 0), thickness=2)
+
+    if not zone_locked and not roi_points:
+        cv2.putText(output_frame, "ROI를 그려주세요 (왼클릭=점, 휠클릭=완료)", (30, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2)
 
     if danger_this_frame:
         print("[WARNING] 사람 침입 감지!")
@@ -101,15 +109,11 @@ while True:
 
     if key == ord("q"):
         break
-    elif key == ord("h"):
-        if zone_poly is not None:
-            locked_zone_poly = zone_poly
-            zone_locked = True
-            print("[INFO] 감지 영역이 고정되었습니다.")
     elif key == ord("r"):
         zone_locked = False
-        locked_zone_poly = None
-        print("[INFO] 감지 영역이 재설정되었습니다.")
+        roi_points = []
+        zone_poly = None
+        print("[INFO] ROI 영역이 재설정되었습니다.")
 
 cap.release()
 cv2.destroyAllWindows()
