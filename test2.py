@@ -8,8 +8,8 @@ upper_red1 = np.array([10, 255, 255])
 lower_red2 = np.array([160, 100, 100])
 upper_red2 = np.array([180, 255, 255])
 
-# YOLOv5 모델
-model = torch.hub.load('ultralytics/yolov5', 'yolov5s')
+# YOLOv5n 모델 사용
+model = torch.hub.load('ultralytics/yolov5', 'yolov5n')
 
 cap = cv2.VideoCapture(0)
 alert_active = False
@@ -17,6 +17,10 @@ blink_state = False
 blink_counter = 0
 zone_locked = False
 locked_zone_poly = None
+
+frame_count = 0
+yolo_interval = 5
+last_dets = []
 
 while True:
     ret, frame = cap.read()
@@ -42,13 +46,19 @@ while True:
         zone_poly = locked_zone_poly
 
     alert_active = False
+    danger_this_frame = False
 
-    # === YOLO로 사람 검출 및 ROI 침입 확인 ===
-    danger_this_frame = False  # 이 프레임에서 경고 출력 여부(중복 방지)
+    frame_count += 1
+
+    # YOLO 추론 주기 낮추기
     if zone_poly is not None and zone_locked:
-        # YOLOv5로 추론
-        results = model(frame)
-        dets = results.xyxy[0].cpu().numpy()
+        if frame_count % yolo_interval == 0:
+            results = model(frame)
+            dets = results.xyxy[0].cpu().numpy()
+            last_dets = dets
+        else:
+            dets = last_dets
+
         for det in dets:
             if int(det[5]) == 0:  # person
                 x1, y1, x2, y2, conf = det[:5]
@@ -57,7 +67,6 @@ while True:
                 if inside >= 0:
                     alert_active = True
                     danger_this_frame = True
-                    # 화면 경고 표시
                     cv2.rectangle(output_frame, (int(x1), int(y1)), (int(x2), int(y2)), (0,0,255), 2)
                     cv2.putText(output_frame, "DANGER!", (int(x1), int(y1)-10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,255), 2)
@@ -84,7 +93,6 @@ while True:
         cv2.putText(output_frame, "영역이 감지되지 않았습니다", (30, 50),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
-    # === 콘솔에 WARNING 메시지 출력 ===
     if danger_this_frame:
         print("[WARNING] 사람 침입 감지!")
 
