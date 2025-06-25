@@ -14,3 +14,15 @@ pip3 install torchvision==xxx
 git clone https://github.com/ultralytics/yolov5.git
 cd yolov5
 pip3 install -r requirements.txt
+
+
+
+pip3 show opencv-python
+
+pip3 uninstall opencv-python-headless
+pip3 install opencv-python
+
+sudo apt update
+sudo apt install libgl1-mesa-glx libglib2.0-0 libgtk2.0-dev libcanberra-gtk-module
+
+sudo apt install qt5-default
