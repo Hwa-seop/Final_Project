@@ -7,7 +7,7 @@ import time
 
 # YOLO 모델 로드
 model = torch.hub.load('ultralytics/yolov5', 'yolov5n')
-model.eval()  # type: ignore
+model.eval() # type: ignore
 
 cap = cv2.VideoCapture(0)
 app = Flask(__name__)
@@ -16,6 +16,7 @@ app = Flask(__name__)
 roi_points = []
 zone_locked = False
 zone_poly = None
+zone_locked = False
 
 # 공유 변수
 stop_flag = False
@@ -88,7 +89,7 @@ def yolo_streaming_loop():
                 inside = cv2.pointPolygonTest(zone_poly, (cx, cy), False)
                 if inside >= 0:
                     alert = True
-                    print(f"[ALERT] 사람 감지: 좌표=({cx}, {cy})")  # ✅ 올바른 위치
+                    print(f"[ALERT] 사람 감지: 좌표=({cx}, {cy})")  #  올바른 위치
                     cv2.rectangle(output, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
                     cv2.putText(output, "DANGER!", (int(x1), int(y1) - 10),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
