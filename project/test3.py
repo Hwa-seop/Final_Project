@@ -21,14 +21,12 @@ def mouse_callback(event, x, y, flags, param):
     if not zone_locked:
         if event == cv2.EVENT_LBUTTONDOWN:
             roi_points.append((x, y))
-        elif event == cv2.EVENT_RBUTTONDOWN:  # 오른쪽 클릭 시 마지막 점 삭제
-            if roi_points:
-                roi_points.pop()
         elif event == cv2.EVENT_MBUTTONDOWN:  # 가운데 버튼(휠) 클릭 시 확정
             if len(roi_points) >= 3:
                 zone_poly = np.array(roi_points, dtype=np.int32).reshape((-1, 1, 2))
                 zone_locked = True
                 print("[INFO] Area fixed")
+
 
 cv2.namedWindow("Security Alert")
 cv2.setMouseCallback("Security Alert", mouse_callback)
@@ -51,7 +49,7 @@ while True:
         if len(roi_points) > 1:
             cv2.polylines(output_frame, [np.array(roi_points, dtype=np.int32).reshape((-1, 1, 2))],
                           isClosed=False, color=(0, 255, 255), thickness=2)
-        cv2.putText(output_frame, "Left : Add | Right = Delete | Wheel Click = Done", (20, 30),
+        cv2.putText(output_frame, "Left Click: Add | 'D' : Delete | Wheel Click: Done", (20, 30),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
     alert_active = False
@@ -107,6 +105,7 @@ while True:
         print("[WARNING] Access Detected")
 
     cv2.imshow("Security Alert", output_frame)
+    
     key = cv2.waitKey(1) & 0xFF
 
     if key == ord("q"):
@@ -116,6 +115,9 @@ while True:
         roi_points = []
         zone_poly = None
         print("[INFO] Area reset")
+    elif key == ord("d") and not zone_locked and roi_points:
+        roi_points.pop()
+        print("[INFO] Last point removed")
 
 cap.release()
 cv2.destroyAllWindows()
