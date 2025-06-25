@@ -22,3 +22,7 @@
 |            |                | 오후   |                 |
 | 25.06.25   | 이우석         | 오전   |                                                     |
 |            |                | 오후   |                                        |
+
+
+# ROI 관련 변수
+cv2.error: OpenCV(4.11.0) /io/opencv/modules/highgui/src/window_QT.cpp:753: error: (-27:Null pointer) NULL window handler in function 'cvSetMouseCallback'
