@@ -3,10 +3,17 @@ import numpy as np
 import torch
 
 # YOLOv5n 모델 사용
-model = torch.hub.load('ultralytics/yolov5', 'yolov5n')
+try:
+    model = torch.hub.load('ultralytics/yolov5', 'yolov5n')
+except Exception as e:
+    print("[ERROR] Failed to load YOLO model, check the network:", e)
+    exit()
 
 # 캡처 및 감지 상태 체크 변수
 cap = cv2.VideoCapture(0)
+if not cap.isOpened():
+    print("[ERROR] Failed to open Camera, check the connection")
+    exit()
 alert_active = False
 blink_state = False
 blink_counter = 0
@@ -61,7 +68,10 @@ while True:
     if zone_locked and zone_poly is not None:
         if frame_count % yolo_interval == 0:
             results = model(frame)
-            dets = results.xyxy[0].cpu().numpy()
+            if results.xyxy and len(results.xyxy[0]) > 0:
+                dets = results.xyxy[0].cpu().numpy()
+            else:
+                dets = []
             last_dets = dets
         else:
             dets = last_dets
