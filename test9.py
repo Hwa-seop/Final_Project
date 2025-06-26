@@ -40,6 +40,7 @@ def roi_setup():
 
     print("[INFO] Draw ROI polygon. Left: add, Right: remove, Enter/Space: confirm, q: quit")
     cv2.namedWindow("Security Alert", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Security Alert", 1280, 720)  #초기 화면 1280x720
     cv2.setMouseCallback("Security Alert", mouse_callback)
 
     while not zone_locked and not stop_flag:
@@ -99,7 +100,8 @@ def yolo_loop():
             for det in last_detections:
                 if int(det[5]) == 0:  # 사람 클래스
                     x1, y1, x2, y2, conf = det[:5]
-                    cx, cy = int((x1 + x2) // 2), int((y1 + y2) // 2)
+                    cx = int((x1 + x2) // 2)
+                    cy = int(y2 - (y2 - y1) * 0.05)
                     inside = cv2.pointPolygonTest(zone_poly, (cx, cy), False)
 
                     # ROI 내부에 있을 경우 경고
@@ -131,7 +133,13 @@ def yolo_loop():
         with frame_lock:
             shared_frame = output.copy()
 
-        time.sleep(0.01)  # CPU 부하 방지
+        # 로컬 보기
+        cv2.imshow("Detection", output)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            stop_flag = True
+            break
+
+        time.sleep(0.01)
 
 # Flask용 프레임 제너레이터
 def gen_frames():
