@@ -12,27 +12,32 @@ app = Flask(__name__)
 
 cap = cv2.VideoCapture(0)
 
-frame_count = 0
 def gen_frames():
-    global frame_count
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-        frame_count += 1
 
-        if frame_count % 3 == 0:
-            results = model(frame)
-            dets = results.xyxy[0].cpu().numpy()
-            for det in dets:
-                if int(det[5]) == 0:
-                    x1, y1, x2, y2 = map(int, det[:4])
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
-
+        # --- YOLO/ROI 관련 처리 (아래 예시는 "사람"만 빨간 박스 표시) ---
+        results = model(frame)
+        dets = results.xyxy[0].cpu().numpy()
+        for det in dets:
+            if int(det[5]) == 0:  # person
+                x1, y1, x2, y2 = map(int, det[:4])
+                cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)
+        # -------------------------------------------------------------
+        
         ret, buffer = cv2.imencode('.jpg', frame)
         frame_jpg = buffer.tobytes()
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_jpg + b'\r\n')
+        
+        # 결과 영상 표시
+        cv2.imshow("YOLOv5 디버그 영상", frame)
+
+        # 'q' 키 누르면 종료
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
 @app.route('/')
 def index():
