@@ -22,7 +22,11 @@
 |            |                | 오후   |   YOLO 추론 시 발생 가능한 예외상황 처리         |
 | 25.06.25   | 이우석         | 오전   |  YOLOv5 모델 학습 진행                                            |
 |            |                | 오후   | 모델 기반 카메라 영상 취득 프로그램 개발                          |
+| 25.06.26   | 이화섭 | 오전   |            |
+|            |                | 오후   |   깅 |
+| 25.06.26   | 박해준 | 오전   |    |
+|            |                | 오후   |           |
+| 25.06.26   | 이우석         | 오전   |                                       |
+|            |                | 오후   |                        |
 
 
-# ROI 관련 변수
-cv2.error: OpenCV(4.11.0) /io/opencv/modules/highgui/src/window_QT.cpp:753: error: (-27:Null pointer) NULL window handler in function 'cvSetMouseCallback'
