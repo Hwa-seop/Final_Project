@@ -42,3 +42,11 @@ sudo apt install qt5-default
 pip install face_recognition
 
 pip install tf-keras
+
+
+pip install mysql-connector-python
+sqltools 설치
+
+
+DeepSORT 설치
+pip install deep_sort_realtime

@@ -6,30 +6,48 @@ import threading
 import time
 import mysql.connector
 from datetime import datetime
-from deep_sort_realtime.deepsort_tracker import DeepSort
-import warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
 
 # MySQL 연결 설정
 db_config = {
     'host': 'localhost',
     'user': 'root',
-    'password': 'qwe123',
+    'password': 'qwe123',  # 실제 비밀번호로 변경
     'database': 'safety_monitoring'
 }
 
 def get_db_connection():
     return mysql.connector.connect(**db_config)
 
-def insert_alert(person_id, cx, cy):
+# 중복 저장 방지를 위한 최근 경고 메모리 저장소
+recent_alerts = []
+
+def is_duplicate_alert(cx, cy, threshold=30, cooldown=10):
+    current_time = time.time()
+    for alert in recent_alerts:
+        dist = ((cx - alert['cx'])**2 + (cy - alert['cy'])**2)**0.5
+        if dist < threshold and current_time - alert['time'] < cooldown:
+            return True
+    return False
+
+def insert_alert(cx, cy):
+    if is_duplicate_alert(cx, cy):
+        return  # 중복 경고 저장 안함
+    
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        sql = "INSERT INTO alerts (person_id, alert_time, coord_x, coord_y) VALUES (%s, %s, %s, %s)"
-        cursor.execute(sql, (person_id, now, cx, cy))
+        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        sql = "INSERT INTO alerts (alert_time, coord_x, coord_y) VALUES (%s, %s, %s)"
+        cursor.execute(sql, (now_str, cx, cy))
         conn.commit()
-        print(f"[DB] Alert inserted: id={person_id}, time={now}, coords=({cx},{cy})")
+        print(f"[DB] Alert inserted at {now_str} coords=({cx}, {cy})")
+
+        # 메모리에도 저장 (최근 60초치만 유지)
+        recent_alerts.append({'cx': cx, 'cy': cy, 'time': time.time(), 'alert_time': now_str})
+        recent_alerts[:] = [a for a in recent_alerts if time.time() - a['time'] < 60]
+
     except Exception as e:
         print(f"[DB ERROR] {e}")
     finally:
@@ -66,6 +84,7 @@ def mouse_callback(event, x, y, flags, param):
 
 def roi_setup():
     global zone_locked, zone_poly, stop_flag
+
     print("[INFO] Draw ROI polygon with mouse. Left click: add point, Right click: remove point, Enter/Space: confirm, q: quit")
     cv2.namedWindow("Security Alert", cv2.WINDOW_NORMAL)
     cv2.setMouseCallback("Security Alert", mouse_callback)
@@ -75,6 +94,7 @@ def roi_setup():
         if not ret:
             break
         output = frame.copy()
+
         for pt in roi_points:
             cv2.circle(output, pt, 5, (255, 0, 0), -1)
         if len(roi_points) > 1:
@@ -99,21 +119,18 @@ def roi_setup():
 
     cv2.destroyAllWindows()
 
-tracker = DeepSort(max_age=30, n_init=3, nms_max_overlap=1.0, embedder="mobilenet")
-
 def yolo_loop():
     global shared_frame, stop_flag, zone_locked, zone_poly
 
     frame_count = 0
     yolo_interval = 5
     last_detections = []
-    last_save_time = dict()
-    SAVE_COOLDOWN = 10  # 10초
 
     while not stop_flag:
         ret, frame = cap.read()
         if not ret:
             break
+
         output = frame.copy()
         frame_count += 1
 
@@ -121,40 +138,30 @@ def yolo_loop():
             if frame_count % yolo_interval == 0:
                 try:
                     results = model(frame)
-                    dets = results.xyxy[0].cpu().numpy()
-                    last_detections = [det for det in dets if int(det[5]) == 0 and det[4] > 0.3]
+                    last_detections = results.xyxy[0].cpu().numpy()
                 except Exception as e:
                     print(f"[YOLO ERROR] {e}")
 
-            # [x1, y1, x2, y2, ...]
-            det_bboxes = [det[:4] for det in last_detections]
-            tracks = tracker.update_tracks(det_bboxes, frame=frame)
+            dets = last_detections
             alert_active = False
 
-            id_to_det = {}
-            for i, track in enumerate(tracks):
-                if not track.is_confirmed():
-                    continue
-                person_id = track.track_id
-                bbox = track.to_ltrb()  # [x1, y1, x2, y2]
-                x1, y1, x2, y2 = map(int, bbox)
-                cx, cy = int((x1 + x2) // 2), int((y1 + y2) // 2)
-                id_to_det[person_id] = (x1, y1, x2, y2, cx, cy)
-                inside = cv2.pointPolygonTest(zone_poly, (cx, cy), False)
-                if inside >= 0:
-                    alert_active = True
-                    cv2.rectangle(output, (x1, y1), (x2, y2), (0,0,255), 2)
-                    cv2.putText(output, f"ID:{person_id} DANGER!", (x1, y1-10),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,255), 2)
-                    now = time.time()
-                    if person_id not in last_save_time or now - last_save_time[person_id] > SAVE_COOLDOWN:
-                        insert_alert(person_id, cx, cy)
-                        last_save_time[person_id] = now
-                else:
-                    cv2.rectangle(output, (x1, y1), (x2, y2), (0,255,0), 2)
-                cv2.putText(output, f"ID:{person_id}", (x1, y2+15),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 2)
-                cv2.circle(output, (cx, cy), 4, (255, 0, 0), -1)
+            for det in dets:
+                if int(det[5]) == 0:  # person class
+                    x1, y1, x2, y2, conf = det[:5]
+                    cx, cy = int((x1 + x2) // 2), int((y1 + y2) // 2)
+                    inside = cv2.pointPolygonTest(zone_poly, (cx, cy), False)
+                    if inside >= 0:
+                        alert_active = True
+                        cv2.rectangle(output, (int(x1), int(y1)), (int(x2), int(y2)), (0,0,255), 2)
+                        cv2.putText(output, "DANGER!", (int(x1), int(y1)-10),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,255), 2)
+                        try:
+                            insert_alert(cx, cy)
+                        except Exception as e:
+                            print(f"[DB ERROR in loop] {e}")
+                    else:
+                        cv2.rectangle(output, (int(x1), int(y1)), (int(x2), int(y2)), (0,255,0), 2)
+                    cv2.circle(output, (cx, cy), 4, (255, 0, 0), -1)
 
             if alert_active:
                 cv2.polylines(output, [zone_poly], isClosed=True, color=(0,0,255), thickness=3)
@@ -192,14 +199,40 @@ def gen_frames():
                b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
         time.sleep(0.03)
 
+# 실시간 최근 경고 조회용 API
+@app.route('/alerts')
+def get_alerts():
+    return {'alerts': recent_alerts}
+
 @app.route('/')
 def index():
     return render_template_string("""
-    <html><head><title>Security Alert</title></head>
+    <html>
+    <head>
+        <title>Security Alert</title>
+        <script>
+            async function fetchAlerts() {
+                const response = await fetch('/alerts');
+                const data = await response.json();
+                let list = document.getElementById('alert-list');
+                list.innerHTML = '';
+                data.alerts.forEach(alert => {
+                    let item = document.createElement('li');
+                    item.textContent = alert.alert_time + ' - Coordinates: (' + alert.cx + ',' + alert.cy + ')';
+                    list.appendChild(item);
+                });
+            }
+            setInterval(fetchAlerts, 3000);
+            window.onload = fetchAlerts;
+        </script>
+    </head>
     <body>
         <h2>Security Alert Camera Stream</h2>
         <img src="/video_feed" width="720" />
-    </body></html>
+        <h3>Recent Alerts</h3>
+        <ul id="alert-list"></ul>
+    </body>
+    </html>
     """)
 
 @app.route('/video_feed')
