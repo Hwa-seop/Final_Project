@@ -86,10 +86,15 @@ def preprocess(frame):
 
 def postprocess(outputs, frame_shape, conf_thres=0.4):
     pred = outputs[0]
+
+    # 차원 확인 및 압축
+    if pred.ndim == 3:
+        pred = pred[0]  # (1, N, 85) -> (N, 85)
+
     boxes = []
     for det in pred:
-        x1, y1, x2, y2, conf, cls = det[:6]
-        if conf < conf_thres or int(cls) != 0:  # 사람만
+        x1, y1, x2, y2, conf, cls = det[:6].tolist()  # float로 변환
+        if conf < conf_thres or int(cls) != 0:  # person 클래스만
             continue
         boxes.append([int(x1), int(y1), int(x2), int(y2)])
     return boxes
@@ -109,14 +114,19 @@ while True:
     if not ret:
         break
 
-    img_input = preprocess(frame)
-    outputs = session.run(None, {input_name: img_input})
-    boxes = postprocess(outputs, frame.shape)
+    frame_count += 1
 
-    objects = tracker.update(boxes)
+    # 추론 프레임 간격 조정 (3프레임마다 실행)
+    if frame_count % 3 == 0:
+        img_input = preprocess(frame)
+        outputs = session.run(None, {input_name: img_input})
+        last_boxes = postprocess(outputs, frame.shape)
+
+
+    objects = tracker.update(last_boxes)
 
     for (object_id, centroid) in objects.items():
-        for (x1, y1, x2, y2) in boxes:
+        for (x1, y1, x2, y2) in last_boxes:
             cX = int((x1 + x2) / 2)
             cY = int((y1 + y2) / 2)
             if abs(centroid[0] - cX) < 10 and abs(centroid[1] - cY) < 10:
@@ -125,9 +135,9 @@ while True:
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                 break
 
-    cv2.imshow("jetson yolo5 onnx centroid", frame)
+    cv2.imshow("onnx centroid", frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
-
+    
 cap.release()
 cv2.destroyAllWindows()
