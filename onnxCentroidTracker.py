@@ -109,6 +109,9 @@ cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
 
 tracker = CentroidTracker(max_disappeared=40)
 
+frame_count = 0
+last_boxes = []
+
 while True:
     ret, frame = cap.read()
     if not ret:
