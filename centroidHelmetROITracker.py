@@ -1,12 +1,14 @@
 import cv2
-import torch
 import numpy as np
-from collections import OrderedDict
+import torch
 from scipy.spatial import distance as dist
+from collections import OrderedDict
 
-# ------------------ Centroid Tracker ------------------ #
+# ---------------------------
+# Centroid Tracker Class
+# ---------------------------
 class CentroidTracker:
-    def __init__(self, max_disappeared=50):
+    def __init__(self, max_disappeared=40):
         self.next_object_id = 0
         self.objects = OrderedDict()
         self.disappeared = OrderedDict()
@@ -42,11 +44,10 @@ class CentroidTracker:
             object_ids = list(self.objects.keys())
             object_centroids = list(self.objects.values())
             D = dist.cdist(np.array(object_centroids), input_centroids)
-
             rows = D.min(axis=1).argsort()
             cols = D.argmin(axis=1)[rows]
-
             used_rows, used_cols = set(), set()
+
             for (row, col) in zip(rows, cols):
                 if row in used_rows or col in used_cols:
                     continue
@@ -58,116 +59,84 @@ class CentroidTracker:
 
             unused_rows = set(range(0, D.shape[0])) - used_rows
             unused_cols = set(range(0, D.shape[1])) - used_cols
-
             for row in unused_rows:
                 object_id = object_ids[row]
                 self.disappeared[object_id] += 1
                 if self.disappeared[object_id] > self.max_disappeared:
                     self.deregister(object_id)
-
             for col in unused_cols:
                 self.register(input_centroids[col])
 
         return self.objects
 
-# ------------------ ROI Mouse Callback ------------------ #
-roi_points = []
-zone_locked = False
-zone_poly = None
+# ---------------------------
+# Load Two YOLO Models
+# ---------------------------
+person_model = torch.hub.load('ultralytics/yolov5', 'yolov5n')
+person_model.conf = 0.4
+person_model.eval()
 
-def mouse_callback(event, x, y, flags, param):
-    global roi_points, zone_locked
-    if not zone_locked:
-        if event == cv2.EVENT_LBUTTONDOWN:
-            roi_points.append((x, y))
-        elif event == cv2.EVENT_RBUTTONDOWN and roi_points:
-            roi_points.pop()
+helmet_model = torch.hub.load('ultralytics/yolov5', 'custom', path='best.pt')
+helmet_model.conf = 0.4
+helmet_model.eval()
 
-# ------------------ Model & Camera Init ------------------ #
-model = torch.hub.load('ultralytics/yolov5', 'custom', path='best.pt')  # best.pt는 사용자 학습 모델
-model.conf = 0.4
-model.eval()
-
+# ---------------------------
+# Initialize Camera & Tracker
+# ---------------------------
 cap = cv2.VideoCapture(0)
 tracker = CentroidTracker(max_disappeared=40)
 frame_count = 0
 last_boxes = []
 
-# ------------------ ROI 설정 루프 ------------------ #
-cv2.namedWindow("Draw ROI")
-cv2.setMouseCallback("Draw ROI", mouse_callback)
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
-    temp = frame.copy()
-    for pt in roi_points:
-        cv2.circle(temp, pt, 5, (255, 0, 0), -1)
-    if len(roi_points) > 1:
-        cv2.polylines(temp, [np.array(roi_points, np.int32).reshape((-1,1,2))], False, (0,255,255), 2)
-
-    cv2.putText(temp, "Left click: add, Right click: undo, Enter: confirm", (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,255), 2)
-    cv2.imshow("Draw ROI", temp)
-    key = cv2.waitKey(1) & 0xFF
-    if key in [13, 32] and len(roi_points) >= 3:
-        zone_poly = np.array(roi_points, dtype=np.int32).reshape((-1, 1, 2))
-        zone_locked = True
-        break
-    elif key == ord('q'):
-        cap.release()
-        cv2.destroyAllWindows()
-        exit()
-
-cv2.destroyWindow("Draw ROI")
-
-# ------------------ 메인 루프 ------------------ #
 while True:
     ret, frame = cap.read()
     if not ret:
         break
 
     frame_count += 1
-    alert_active = False
+    person_boxes, helmet_boxes = [], []
 
     if frame_count % 15 == 0:
-        results = model(frame)
-        dets = results.xyxy[0].cpu().numpy()
-        last_boxes = []
-        for det in dets:
+        # Person detection
+        person_results = person_model(frame)
+        person_dets = person_results.xyxy[0].cpu().numpy()
+        for det in person_dets:
             x1, y1, x2, y2, conf, cls = det[:6]
-            cls = int(cls)
-            if conf < 0.5 or cls not in [0, 1, 2]:
-                continue
-            w, h = x2 - x1, y2 - y1
-            if w < 30 or h < 30:
-                continue
-            last_boxes.append((int(x1), int(y1), int(x2), int(y2), cls))
+            if int(cls) == 0 and conf >= 0.5:  # class 0: person
+                person_boxes.append((int(x1), int(y1), int(x2), int(y2), int(cls)))
 
-    rects = [(x1, y1, x2, y2) for (x1, y1, x2, y2, cls) in last_boxes]
-    objects = tracker.update(rects)
+        # Helmet detection
+        helmet_results = helmet_model(frame)
+        helmet_dets = helmet_results.xyxy[0].cpu().numpy()
+        for det in helmet_dets:
+            x1, y1, x2, y2, conf, cls = det[:6]
+            if conf >= 0.5 and int(cls) in [1, 2]:  # helmet, no-helmet
+                helmet_boxes.append((int(x1), int(y1), int(x2), int(y2), int(cls)))
 
-    for (object_id, centroid) in objects.items():
+        last_boxes = person_boxes + helmet_boxes
+
+    tracked_objects = tracker.update([(x1, y1, x2, y2) for (x1, y1, x2, y2, cls) in last_boxes])
+
+    for (object_id, centroid) in tracked_objects.items():
         for (x1, y1, x2, y2, cls) in last_boxes:
             cX = int((x1 + x2) / 2)
             cY = int((y1 + y2) / 2)
             if abs(centroid[0] - cX) < 10 and abs(centroid[1] - cY) < 10:
-                label = model.names[cls]
-                color = (0, 255, 0) if label == 'helmet' else (0, 0, 255) if label == 'no-helmet' else (255, 255, 0)
+                if cls == 0:
+                    label = "person"
+                    color = (0, 255, 0)
+                elif cls == 1:
+                    label = "helmet"
+                    color = (255, 255, 0)
+                else:
+                    label = "no-helmet"
+                    color = (0, 0, 255)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(frame, f"{label} ID:{object_id}", (x1, y1 - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-                if zone_locked and cv2.pointPolygonTest(zone_poly, (centroid[0], centroid[1]), False) >= 0:
-                    alert_active = True
                 break
 
-    if zone_locked:
-        poly_color = (0, 0, 255) if alert_active else (0, 255, 0)
-        cv2.polylines(frame, [zone_poly], True, poly_color, 3)
-        if alert_active:
-            cv2.putText(frame, "DANGER!", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 255), 3)
-
-    cv2.imshow("Helmet Tracker + ROI", frame)
+    cv2.imshow("Dual YOLO Tracking", frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
