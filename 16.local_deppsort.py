@@ -22,7 +22,6 @@ def insert_alert(track_id, cx, cy):
 
     conn, cursor = None, None
     try:
-        conn = get_db_connection()
         cursor = conn.cursor()
         now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         sql = "INSERT INTO alerts (alert_time, coord_x, coord_y) VALUES (%s, %s, %s)"
