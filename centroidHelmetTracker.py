@@ -6,9 +6,7 @@ import numpy as np  # 배열 연산
 from scipy.spatial import distance as dist  # 거리 계산
 from collections import OrderedDict  # 순서를 유지하는 딕셔너리 구조 사용
 
-# ----------------------------
 # CentroidTracker 클래스 정의: 객체 중심 좌표로 ID 추적 관리
-# ----------------------------
 class CentroidTracker:
     def __init__(self, max_disappeared=50):
         # 초기 ID 및 저장 공간 초기화
@@ -84,19 +82,15 @@ class CentroidTracker:
 
         return self.objects
 
-# ----------------------------
 # 사용자 학습된 YOLOv5 best.pt 모델 로드
-# ----------------------------
 model = torch.hub.load('ultralytics/yolov5', 'custom', path='best.pt')  # 사용자 모델 로드
-model.conf = 0.5  # confidence threshold 설정
+model.conf = 0.4  # confidence threshold 설정
 model.eval()  # 추론 모드 설정
 
-# ----------------------------
 # 메인 실행부: 카메라 캡처, 추론, 추적, 시각화
-# ----------------------------
 cap = cv2.VideoCapture(0)  # 기본 웹캠 사용
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 416)  # 해상도 설정
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 320)
+# cap.set(cv2.CAP_PROP_FRAME_WIDTH, 416)  # 해상도 설정
+# cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 320)
 
 tracker = CentroidTracker(max_disappeared=40)  # 객체 추적기 생성
 frame_count = 0
@@ -109,7 +103,7 @@ while True:
 
     frame_count += 1
 
-    if frame_count % 3 == 0:  # 매 3프레임마다 YOLO 추론
+    if frame_count % 15 == 0:  # 매 15프레임마다 YOLO 추론
         results = model(frame)
         dets = results.xyxy[0].cpu().numpy()  # 결과를 numpy로 변환
         last_boxes = []
