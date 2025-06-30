@@ -70,7 +70,8 @@ class CentroidTracker:
 
 
 # 모델 로드
-model = torch.hub.load('ultralytics/yolov5', 'custom', path='best.pt')
+# model = torch.hub.load('ultralytics/yolov5', 'custom', path='best.pt') # 커스텀 모델
+model = torch.hub.load('ultralytics/yolov5', 'yolov5n')
 model.conf = 0.4
 model.eval()
 
