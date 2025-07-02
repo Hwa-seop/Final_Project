@@ -2,18 +2,18 @@
 -- 이 스크립트는 MySQL 데이터베이스 테이블을 생성합니다.
 
 -- 데이터베이스 생성 (필요시)
--- CREATE DATABASE ai_safety_monitor;
--- USE ai_safety_monitor;
+CREATE DATABASE IF NOT EXISTS ai_safety_monitor;
+USE ai_safety_monitor;
 
 -- 사용자 테이블 (관리자 정보)
 CREATE TABLE IF NOT EXISTS users (
-    id SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     email VARCHAR(100),
     role VARCHAR(20) DEFAULT 'admin',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 -- 세션 테이블 (모니터링 세션 정보)
@@ -117,39 +117,36 @@ SELECT
     ms.end_time,
     ms.status,
     COUNT(DISTINCT fs.id) as total_frames,
-    COUNT(DISTINCT to.track_id) as unique_objects,
+    COUNT(DISTINCT tobj.track_id) as unique_objects,
     COUNT(de.id) as total_danger_events,
     AVG(fs.persons_detected) as avg_persons_detected,
     MAX(fs.persons_detected) as max_persons_detected
 FROM monitoring_sessions ms
 LEFT JOIN frame_statistics fs ON ms.id = fs.session_id
-LEFT JOIN tracked_objects to ON ms.id = to.session_id
+LEFT JOIN tracked_objects tobj ON ms.id = tobj.session_id
 LEFT JOIN danger_events de ON ms.id = de.session_id
 GROUP BY ms.id, ms.session_name, ms.start_time, ms.end_time, ms.status;
 
 -- 기본 관리자 사용자 생성 (비밀번호: admin123)
 INSERT INTO users (username, password_hash, email, role) 
 VALUES ('admin', 'pbkdf2:sha256:600000$your_salt_here$hash_here', 'admin@example.com', 'admin')
-ON CONFLICT (username) DO NOTHING;
+ON DUPLICATE KEY UPDATE username=username;
 
--- 트리거 함수 생성 (updated_at 자동 업데이트)
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
+-- 트리거 생성 (MySQL용)
+DELIMITER //
 
--- 트리거 생성
 CREATE TRIGGER update_tracked_objects_updated_at 
     BEFORE UPDATE ON tracked_objects 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    FOR EACH ROW 
+BEGIN
+    SET NEW.updated_at = CURRENT_TIMESTAMP;
+END//
 
 CREATE TRIGGER update_roi_configurations_updated_at 
     BEFORE UPDATE ON roi_configurations 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    FOR EACH ROW 
+BEGIN
+    SET NEW.updated_at = CURRENT_TIMESTAMP;
+END//
 
--- 권한 설정
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO postgres;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO postgres; 
+DELIMITER ; 

@@ -5,7 +5,7 @@ Flask Web Application for Unified ROI Tracker
 This Flask app provides a web interface for real-time helmet detection and ROI tracking.
 Users can view live video stream, control settings, and monitor statistics through a web browser.
 """
-
+# 기본 모듈 및 외부 의존성
 from flask import Flask, render_template, Response, jsonify, request
 import cv2
 import threading
@@ -15,45 +15,47 @@ import os
 import signal
 import sys
 from unified_roi_tracker_module import UnifiedROITracker
-from database_manager import DatabaseManager, init_database, get_database_manager
+from database_manager_patched import DatabaseManager, init_database, get_database_manager
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
-
+# === [Flask 앱 초기화 및 전역 변수] ===
 app = Flask(__name__)
 
+# 시스템 제어 및 상태 관리용 전역 변수들
 # Global variables
-camera = None
-tracker = None
-output_frame = None
-lock = threading.Lock()
-stats = {}
-is_running = False
-camera_thread = None
-roi_drawing_mode = False
-roi_points = []
-frames_processed = 0
-last_frame_time = 0
+camera = None  # OpenCV 비디오 소스
+tracker = None  # ROI 추적기
+output_frame = None  # 현재 출력 프레임
+lock = threading.Lock()  # 스레드 안전을 위한 잠금
+stats = {}  # 통계 정보
+is_running = False  # 트래킹 실행 중 상태
+camera_thread = None  # 백그라운드 영상 처리 쓰레드
+roi_drawing_mode = False  # ROI 그리기 모드
+roi_points = []  # ROI 포인트
+frames_processed = 0  # 처리된 프레임 수
+last_frame_time = 0  # 마지막 프레임 시간
 
+# ID 기반 추적 및 통계 관리
 # Statistics tracking for unique IDs
-processed_ids = set()  # Set of processed track IDs
-id_stats = {}  # Dictionary to store stats per ID
-total_danger_events = 0  # Total danger events counter (cumulative)
+processed_ids = set()   # 처리된 ID 모음
+id_stats = {}  # ID별 통계 정보를 저장하기 위한 딕셔너리
+total_danger_events = 0  # 총 위험 이벤트 카운터 (누적)
 
 # Database manager
 db_manager = None
 current_session_id = None
 
-# Configuration
+# === [기본 설정값 정의] ===
 DEFAULT_CONFIG = {
-    'model_path': '/home/lws/kulws2025/kubig2025/final_project/yolov5/helmet_detection/helmet_detection/weights/best.pt',
-    'conf_thresh': 0.2,
-    'iou_threshold': 0.1,
+    'model_path': 'best.pt',
+    'conf_thresh': 0.3,
+    'iou_threshold': 0.2,
     'max_age': 30,
     'detection_interval': 5,
     'device': 'auto',
     'source': 0
 }
-
+# === [DB 연결 초기화] ===
 def initialize_database():
     """Initialize database connection."""
     global db_manager
@@ -65,22 +67,22 @@ def initialize_database():
             'port': os.getenv('DB_PORT', '3306'),
             'database': os.getenv('DB_NAME', 'ai_safety_monitor'),
             'user': os.getenv('DB_USER', 'root'),
-            'password': os.getenv('DB_PASSWORD', ''),
+            'password': os.getenv('DB_PASSWORD', 'qwe123'),
             'charset': 'utf8mb4',
             'autocommit': True
         }
         
         db_manager = init_database(db_config)
         if db_manager.connect():
-            print("✅ Database connection established")
+            print("Database connection established")
             return True
         else:
-            print("⚠️ Database connection failed - running without database")
+            print("Database connection failed - running without database")
             return False
     except Exception as e:
-        print(f"⚠️ Database initialization error: {e} - running without database")
+        print(f"Database initialization error: {e} - running without database")
         return False
-
+# === [세션 생성 (DB 기록용)] ===
 def create_monitoring_session():
     """Create a new monitoring session."""
     global db_manager, current_session_id
@@ -93,7 +95,7 @@ def create_monitoring_session():
         current_session_id = db_manager.create_session(session_name, DEFAULT_CONFIG)
         
         if current_session_id:
-            print(f"✅ Created monitoring session: {session_name} (ID: {current_session_id})")
+            print(f"Created monitoring session: {session_name} (ID: {current_session_id})")
             db_manager.log_system_event('info', 'Monitoring session started', {
                 'session_id': current_session_id,
                 'config': DEFAULT_CONFIG
@@ -101,9 +103,9 @@ def create_monitoring_session():
         
         return current_session_id
     except Exception as e:
-        print(f"❌ Failed to create monitoring session: {e}")
+        print(f"Failed to create monitoring session: {e}")
         return None
-
+# === [카메라 및 트래커 초기화] ===
 def initialize_camera():
     """Initialize camera and tracker."""
     global camera, tracker
@@ -226,8 +228,14 @@ def get_realtime_statistics():
             'tracks_active': 0
         }
     
-    # Get current active tracks
-    current_tracks = list(tracker.id_has_helmet.keys())
+    # Get current active tracks (only tracks that are currently visible in frame)
+    current_tracks = []
+    for track_id in tracker.id_has_helmet.keys():
+        # Only count tracks that are recently updated (within last few frames)
+        # This ensures we only count people currently visible in the frame
+        if track_id in tracker.id_has_helmet and track_id in tracker.id_in_danger_zone:
+            current_tracks.append(track_id)
+    
     persons_detected = len(current_tracks)
     
     people_with_helmets = 0
@@ -260,13 +268,14 @@ def camera_loop():
     
     while is_running:
         if camera is None or not camera.isOpened():
-            time.sleep(0.1)
+            time.sleep(0.03)
             continue
         
         ret, frame = camera.read()
         if not ret:
             continue
-        
+        frame = frame.copy()
+
         try:
             # Update frame processing time
             last_frame_time = time.time()
@@ -301,19 +310,22 @@ def camera_loop():
                         in_danger_zone = tracker.id_in_danger_zone.get(track_id, False)
                         update_statistics_for_id(track_id, has_helmet, in_danger_zone)
                 
-                # Get real-time statistics for current frame
-                realtime_stats = get_realtime_statistics()
-                
-                # Combine real-time stats with cumulative total_danger_events
-                combined_stats = realtime_stats.copy()
-                combined_stats['total_danger_events'] = total_danger_events
+                # Use frame_stats directly for current frame statistics
+                current_frame_stats = {
+                    'persons_detected': frame_stats.get('persons_detected', 0),
+                    'people_with_helmets': frame_stats.get('people_with_helmets', 0),
+                    'people_without_helmets': frame_stats.get('people_without_helmets', 0),
+                    'people_in_danger_zone': frame_stats.get('people_in_danger_zone', 0),
+                    'tracks_active': frame_stats.get('tracks_active', 0),
+                    'total_danger_events': 0  # Reset to 0 for current frame only
+                }
                 
                 # Update frame stats
-                frame_stats.update(combined_stats)
+                frame_stats.update(current_frame_stats)
                 
                 # Save frame statistics to database (every 30 frames to avoid too much data)
                 if db_manager and frames_processed % 30 == 0:
-                    db_manager.save_frame_statistics(combined_stats, frames_processed)
+                    db_manager.save_frame_statistics(current_frame_stats, frames_processed)
                 
             else:
                 processed_frame = frame
@@ -390,21 +402,38 @@ def get_stats():
     """Get current statistics."""
     global stats, roi_drawing_mode, roi_points, is_running, frames_processed, last_frame_time
     
-    with lock:
-        current_stats = stats.copy()
-    
-    # Add real-time statistics
+    # Get only real-time statistics from current frame
     if tracker and not roi_drawing_mode:
-        realtime_stats = get_realtime_statistics()
-        current_stats.update(realtime_stats)
-        current_stats['total_danger_events'] = total_danger_events
-    
-    # Add system status
-    current_stats['is_running'] = is_running
-    current_stats['roi_drawing_mode'] = roi_drawing_mode
-    current_stats['roi_points_count'] = len(roi_points)
-    current_stats['frames_processed'] = frames_processed
-    current_stats['last_frame_time'] = str(last_frame_time)  # Convert to string
+        # Use the stats from the last processed frame
+        with lock:
+            current_stats = {
+                'persons_detected': stats.get('persons_detected', 0),
+                'people_with_helmets': stats.get('people_with_helmets', 0),
+                'people_without_helmets': stats.get('people_without_helmets', 0),
+                'people_in_danger_zone': stats.get('people_in_danger_zone', 0),
+                'tracks_active': stats.get('tracks_active', 0),
+                'total_danger_events': 0,  # Reset to 0 for current frame only
+                'is_running': is_running,
+                'roi_drawing_mode': roi_drawing_mode,
+                'roi_points_count': len(roi_points),
+                'frames_processed': frames_processed,
+                'last_frame_time': str(last_frame_time)
+            }
+    else:
+        # No tracker or in drawing mode
+        current_stats = {
+            'persons_detected': 0,
+            'people_with_helmets': 0,
+            'people_without_helmets': 0,
+            'people_in_danger_zone': 0,
+            'tracks_active': 0,
+            'total_danger_events': 0,
+            'is_running': is_running,
+            'roi_drawing_mode': roi_drawing_mode,
+            'roi_points_count': len(roi_points),
+            'frames_processed': frames_processed,
+            'last_frame_time': str(last_frame_time)
+        }
     
     # Determine system status
     if roi_drawing_mode:

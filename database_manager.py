@@ -29,7 +29,7 @@ class DatabaseManager:
             'port': int(os.getenv('DB_PORT', '3306')),
             'database': os.getenv('DB_NAME', 'ai_safety_monitor'),
             'user': os.getenv('DB_USER', 'root'),
-            'password': os.getenv('DB_PASSWORD', '0000'),
+            'password': os.getenv('DB_PASSWORD', 'qwe123'),
             'charset': 'utf8mb4',
             'autocommit': True
         }
@@ -43,7 +43,7 @@ class DatabaseManager:
     def connect(self) -> bool:
         """Establish database connection."""
         try:
-            self.connection = mysql.connector.connect(**self.db_config)
+            self.connection = mysql.connector.connect(**self.db_config, ssl_disabled=True)
             self.logger.info("Database connection established successfully")
             return True
         except Exception as e:
