@@ -2,14 +2,23 @@
 """
 Flask Web Application for Unified ROI Tracker
 
-This Flask app provides a web interface for real-time helmet detection and ROI tracking.
-Users can view live video stream, control settings, and monitor statistics through a web browser.
+이 Flask 앱은 실시간 헬멧 검출 및 ROI 추적을 위한 웹 인터페이스를 제공합니다.
+사용자는 웹 브라우저를 통해 실시간 비디오 스트림을 보고, 설정을 제어하고, 통계를 모니터링할 수 있습니다.
+
+주요 기능:
+- 실시간 비디오 스트리밍
+- YOLOv5 기반 헬멧 검출
+- DeepSORT 기반 객체 추적
+- ROI 기반 위험 구역 모니터링
+- 웹 인터페이스를 통한 제어
+- MySQL 데이터베이스 연동
 """
 # 기본 모듈 및 외부 의존성
 from flask import Flask, render_template, Response, jsonify, request
 import cv2
 import threading
 import time
+from functools import lru_cache
 import json
 import os
 import signal
@@ -46,18 +55,63 @@ db_manager = None
 current_session_id = None
 
 # === [기본 설정값 정의] ===
+# GStreamer configuration
+GSTREAMER_CONFIG = {
+    # ───────── V4L2 카메라 (일반적 환경) ─────────
+    'webcam': (
+        'v4l2src device=/dev/video2 ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1 ! appsink'
+    ),
+    'usb_camera': (
+        'v4l2src device=/dev/video1 ! videoconvert ! '
+        'video/x-raw,width=1280,height=720,framerate=30/1 ! appsink'
+    ),
+    # ───────── 나머지 소스는 기존과 동일 ─────────
+    'rtsp': (
+        'rtspsrc location=rtsp://192.168.1.100:554/stream ! '
+        'rtph264depay ! h264parse ! avdec_h264 ! '
+        'videoconvert ! appsink'
+    ),
+    'file': (
+        'filesrc location=/path/to/video.mp4 ! '
+        'decodebin ! videoconvert ! appsink'
+    ),
+    'test': (
+        'videotestsrc ! '
+        'video/x-raw,width=640,height=480,framerate=30/1 ! '
+        'videoconvert ! appsink'
+    ),
+}
+
 DEFAULT_CONFIG = {
     'model_path': 'best.pt',
     'conf_thresh': 0.3,
     'iou_threshold': 0.2,
-    'max_age': 30,
-    'detection_interval': 5,
+    'max_age': 60,
+    'detection_interval': 3,
     'device': 'auto',
-    'source': 0
+    'source': 'webcam',  # 반드시 'webcam'으로 설정
 }
+
+# Configuration cache (단순화)
+_config_cache = None
+
+def get_cached_config():
+    global _config_cache
+    if _config_cache is None:
+        _config_cache = DEFAULT_CONFIG.copy()
+    return _config_cache
+
 # === [DB 연결 초기화] ===
 def initialize_database():
-    """Initialize database connection."""
+    """
+    데이터베이스 연결을 초기화합니다.
+    
+    환경 변수에서 데이터베이스 설정을 읽어와 연결을 시도합니다.
+    연결 실패 시 데이터베이스 없이 실행됩니다.
+    
+    Returns:
+        bool: 데이터베이스 연결 성공 여부
+    """
     global db_manager
     
     try:
@@ -74,17 +128,25 @@ def initialize_database():
         
         db_manager = init_database(db_config)
         if db_manager.connect():
-            print("Database connection established")
+            print("✅ 데이터베이스 연결 성공")
             return True
         else:
-            print("Database connection failed - running without database")
+            print("❌ 데이터베이스 연결 실패 - 데이터베이스 없이 실행")
             return False
     except Exception as e:
-        print(f"Database initialization error: {e} - running without database")
+        print(f"❌ 데이터베이스 초기화 오류: {e} - 데이터베이스 없이 실행")
         return False
 # === [세션 생성 (DB 기록용)] ===
 def create_monitoring_session():
-    """Create a new monitoring session."""
+    """
+    새로운 모니터링 세션을 생성합니다.
+    
+    데이터베이스에 새로운 세션을 생성하고 세션 ID를 반환합니다.
+    세션은 위험 이벤트 기록 및 통계 추적에 사용됩니다.
+    
+    Returns:
+        int or None: 생성된 세션 ID 또는 None (실패 시)
+    """
     global db_manager, current_session_id
     
     if not db_manager:
@@ -95,7 +157,7 @@ def create_monitoring_session():
         current_session_id = db_manager.create_session(session_name, DEFAULT_CONFIG)
         
         if current_session_id:
-            print(f"Created monitoring session: {session_name} (ID: {current_session_id})")
+            print(f"✅ 모니터링 세션 생성: {session_name} (ID: {current_session_id})")
             db_manager.log_system_event('info', 'Monitoring session started', {
                 'session_id': current_session_id,
                 'config': DEFAULT_CONFIG
@@ -103,19 +165,43 @@ def create_monitoring_session():
         
         return current_session_id
     except Exception as e:
-        print(f"Failed to create monitoring session: {e}")
+        print(f"❌ 모니터링 세션 생성 실패: {e}")
         return None
+
 # === [카메라 및 트래커 초기화] ===
 def initialize_camera():
-    """Initialize camera and tracker."""
+    """
+    카메라와 트래커를 초기화합니다.
+    GStreamer 파이프라인만 시도합니다. 실패 시 에러 출력 후 종료.
+    Returns:
+        bool: 초기화 성공 여부
+    """
     global camera, tracker
-    
     try:
-        camera = cv2.VideoCapture(DEFAULT_CONFIG['source'])
-        if not camera.isOpened():
-            print("Error: Could not open camera")
+        config = get_cached_config()
+        source = config.get('source', 'webcam')
+        # GStreamer 파이프라인만 시도
+        if source in GSTREAMER_CONFIG:
+            gstreamer_pipeline = GSTREAMER_CONFIG[source]
+            print(f"[DEBUG] 사용 파이프라인: {gstreamer_pipeline}")
+            camera = cv2.VideoCapture(gstreamer_pipeline, cv2.CAP_GSTREAMER)
+            if camera and camera.isOpened():
+                ret, test_frame = camera.read()
+                if ret and test_frame is not None:
+                    print(f"✅ GStreamer 파이프라인 '{source}'에서 카메라를 성공적으로 열었습니다")
+                else:
+                    print(f"❌ GStreamer 파이프라인 '{source}'에서 프레임을 읽을 수 없습니다")
+                    camera.release()
+                    camera = None
+            else:
+                print(f"❌ GStreamer 파이프라인 '{source}'을 열 수 없습니다")
+                camera = None
+        else:
+            print(f"❌ '{source}'는(은) 등록된 GStreamer 파이프라인이 아닙니다. GSTREAMER_CONFIG를 확인하세요.")
+            camera = None
+        if not camera or not camera.isOpened():
+            print("❌ GStreamer 파이프라인으로 카메라를 열 수 없습니다. 프로그램을 종료합니다.")
             return False
-        
         # Initialize tracker
         tracker = UnifiedROITracker(
             model_path=DEFAULT_CONFIG['model_path'],
@@ -124,14 +210,20 @@ def initialize_camera():
             device=DEFAULT_CONFIG['device'],
             detection_interval=DEFAULT_CONFIG['detection_interval']
         )
-        
         return True
     except Exception as e:
-        print(f"Error initializing camera: {e}")
+        print(f"❌ 카메라 초기화 오류: {e}")
         return False
 
 def update_statistics_for_id(track_id, has_helmet, in_danger_zone):
-    """Update statistics for a specific track ID, avoiding duplicates."""
+    """
+    특정 트랙 ID의 통계를 업데이트합니다. 중복 카운팅을 방지합니다.
+    
+    Args:
+        track_id (int): 추적 객체의 고유 ID
+        has_helmet (bool): 헬멧 착용 여부
+        in_danger_zone (bool): 위험 구역 내 위치 여부
+    """
     global processed_ids, id_stats, total_danger_events, db_manager
     
     if track_id not in processed_ids:
@@ -198,7 +290,12 @@ def update_statistics_for_id(track_id, has_helmet, in_danger_zone):
             db_manager.update_tracked_object(track_id, has_helmet, in_danger_zone)
 
 def get_current_statistics():
-    """Calculate current statistics from tracked IDs."""
+    """
+    추적된 ID들로부터 현재 통계를 계산합니다.
+    
+    Returns:
+        dict: 현재 통계 정보
+    """
     global id_stats, total_danger_events
     
     persons_detected = len(processed_ids)
@@ -216,7 +313,12 @@ def get_current_statistics():
     }
 
 def get_realtime_statistics():
-    """Get real-time statistics from current frame."""
+    """
+    현재 프레임에서의 실시간 통계를 가져옵니다.
+    
+    Returns:
+        dict: 실시간 통계 정보
+    """
     global tracker
     
     if not tracker or not hasattr(tracker, 'id_has_helmet') or not hasattr(tracker, 'id_in_danger_zone'):
@@ -263,7 +365,12 @@ def get_realtime_statistics():
     }
 
 def camera_loop():
-    """Main camera processing loop."""
+    """
+    메인 카메라 처리 루프입니다.
+    
+    카메라에서 프레임을 읽어와서 객체 검출, 추적, ROI 분석을 수행합니다.
+    처리된 프레임을 웹 스트리밍용으로 인코딩하고 통계를 업데이트합니다.
+    """
     global output_frame, stats, is_running, roi_drawing_mode, roi_points, frames_processed, last_frame_time, db_manager
     
     while is_running:
@@ -347,7 +454,7 @@ def camera_loop():
                         }
                         
         except Exception as e:
-            print(f"Error processing frame: {e}")
+            print(f"❌ 프레임 처리 오류: {e}")
             # Log error to database
             if db_manager:
                 db_manager.log_system_event('error', f'Frame processing error: {e}')
@@ -356,7 +463,12 @@ def camera_loop():
         time.sleep(0.03)  # ~30 FPS
 
 def generate_frames():
-    """Generate video frames for web streaming."""
+    """
+    웹 스트리밍을 위한 비디오 프레임을 생성합니다.
+    
+    Yields:
+        bytes: JPEG 인코딩된 프레임 데이터
+    """
     while True:
         with lock:
             if output_frame is not None:
@@ -365,7 +477,11 @@ def generate_frames():
         time.sleep(0.03)
 
 def shutdown_server():
-    """Gracefully shutdown the server."""
+    """
+    서버를 안전하게 종료합니다.
+    
+    카메라를 해제하고, 데이터베이스 연결을 종료하며, 모니터링 세션을 끝냅니다.
+    """
     global is_running, camera, db_manager, current_session_id
     print("\n🛑 서버를 종료합니다...")
     is_running = False
@@ -388,18 +504,36 @@ def shutdown_server():
 
 @app.route('/')
 def index():
-    """Main page."""
+    """
+    메인 페이지를 렌더링합니다.
+    
+    Returns:
+        str: HTML 템플릿 렌더링 결과
+    """
     return render_template('index.html', config=DEFAULT_CONFIG)
 
 @app.route('/video_feed')
 def video_feed():
-    """Video streaming route."""
+    """
+    비디오 스트리밍 라우트입니다.
+    
+    Returns:
+        Response: MJPEG 스트림 응답
+        Response: FFMPEG 스트림 응답
+    """
     return Response(generate_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(generate_frames(),
+                    mimetype='video/mp4')
 
 @app.route('/api/stats')
 def get_stats():
-    """Get current statistics."""
+    """
+    현재 통계 정보를 반환합니다.
+    
+    Returns:
+        JSON: 현재 통계 정보
+    """
     global stats, roi_drawing_mode, roi_points, is_running, frames_processed, last_frame_time
     
     # Get only real-time statistics from current frame
@@ -447,7 +581,15 @@ def get_stats():
 
 @app.route('/api/config', methods=['GET', 'POST'])
 def config():
-    """Get or update configuration."""
+    """
+    설정을 가져오거나 업데이트합니다.
+    
+    GET: 현재 설정 반환
+    POST: 새로운 설정으로 업데이트
+    
+    Returns:
+        JSON: 설정 정보 또는 업데이트 결과
+    """
     global DEFAULT_CONFIG, tracker
     
     if request.method == 'POST':
@@ -481,7 +623,22 @@ def config():
 
 @app.route('/api/control', methods=['POST'])
 def control():
-    """Control operations."""
+    """
+    시스템 제어 작업을 수행합니다.
+    
+    지원하는 액션:
+    - start: 트래킹 시작
+    - stop: 트래킹 정지
+    - reset: 트래커 리셋
+    - clear_roi: ROI 지우기
+    - shutdown: 서버 종료
+    - start_roi_drawing: ROI 그리기 모드 시작
+    - finish_roi_drawing: ROI 그리기 완료
+    - cancel_roi_drawing: ROI 그리기 취소
+    
+    Returns:
+        JSON: 작업 결과
+    """
     global is_running, camera_thread, tracker, roi_drawing_mode, roi_points, frames_processed, processed_ids, id_stats, total_danger_events, db_manager
     
     data = request.get_json()
@@ -587,7 +744,12 @@ def control():
 
 @app.route('/api/roi', methods=['POST'])
 def set_roi():
-    """Set ROI programmatically."""
+    """
+    프로그래밍 방식으로 ROI를 설정합니다.
+    
+    Returns:
+        JSON: ROI 설정 결과
+    """
     global tracker, db_manager
     
     data = request.get_json()
@@ -610,7 +772,12 @@ def set_roi():
 
 @app.route('/api/roi_click', methods=['POST'])
 def roi_click():
-    """Handle ROI drawing clicks."""
+    """
+    ROI 그리기 클릭을 처리합니다.
+    
+    Returns:
+        JSON: 클릭 처리 결과
+    """
     global roi_points, roi_drawing_mode
     
     if not roi_drawing_mode:
@@ -632,7 +799,12 @@ def roi_click():
 
 @app.route('/api/database/stats')
 def get_database_stats():
-    """Get database statistics."""
+    """
+    데이터베이스 통계를 반환합니다.
+    
+    Returns:
+        JSON: 데이터베이스 통계 정보
+    """
     global db_manager, current_session_id
     
     if not db_manager:
@@ -665,7 +837,7 @@ if __name__ == '__main__':
     
     # Initialize camera and tracker
     if initialize_camera():
-        print("Camera and tracker initialized successfully")
+        print("✅ 카메라와 트래커가 성공적으로 초기화되었습니다")
         
         # Create monitoring session if database is available
         if db_initialized:
@@ -679,4 +851,6 @@ if __name__ == '__main__':
         # Run Flask app
         app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
     else:
-        print("Failed to initialize camera") 
+        print("❌ 카메라 초기화 실패") 
+
+        

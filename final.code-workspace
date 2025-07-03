@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "esp32",
+			"path": "../문서/PlatformIO/Projects/esp32"
+		}
+	],
+	"settings": {
+		"python.languageServer": "None"
+	}
+}

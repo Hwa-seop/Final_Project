@@ -4,29 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI 안전 관제</title>
+    
+    <!-- === [CSS 스타일 정의] === -->
     <style>
+        /* === [기본 리셋 및 박스 모델 설정] === */
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
 
+        /* === [전체 페이지 스타일] === */
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); /* 그라데이션 배경 */
             min-height: 100vh;
             padding: 20px;
         }
 
+        /* === [메인 컨테이너] === */
         .container {
             max-width: 1400px;
             margin: 0 auto;
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(255, 255, 255, 0.95); /* 반투명 흰색 배경 */
             border-radius: 15px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1); /* 그림자 효과 */
             overflow: hidden;
         }
 
+        /* === [헤더 섹션] === */
         .header {
             background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
             color: white;
@@ -44,13 +50,15 @@
             opacity: 0.9;
         }
 
+        /* === [메인 콘텐츠 레이아웃] === */
         .main-content {
             display: grid;
-            grid-template-columns: 2fr 1fr;
+            grid-template-columns: 2fr 1fr; /* 비디오:통계 = 2:1 비율 */
             gap: 20px;
             padding: 20px;
         }
 
+        /* === [비디오 섹션] === */
         .video-section {
             background: #f8f9fa;
             border-radius: 10px;
@@ -58,37 +66,42 @@
             text-align: center;
         }
 
+        /* === [비디오 컨테이너] === */
         .video-container {
             position: relative;
             background: #000;
             border-radius: 10px;
             overflow: hidden;
             margin-bottom: 20px;
-            cursor: crosshair;
+            cursor: crosshair; /* ROI 그리기 모드에서 십자 커서 */
         }
 
+        /* === [비디오 피드] === */
         .video-feed {
             width: 100%;
             max-width: 800px;
             height: auto;
             border-radius: 10px;
-            pointer-events: none;
+            pointer-events: none; /* 비디오 자체 클릭 이벤트 비활성화 */
         }
 
+        /* === [비디오 오버레이 (클릭 이벤트 처리용)] === */
         .video-overlay {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            pointer-events: auto;
+            pointer-events: auto; /* 오버레이에서 클릭 이벤트 활성화 */
             z-index: 10;
         }
 
+        /* === [ROI 그리기 모드 스타일] === */
         .roi-drawing-mode {
             cursor: crosshair;
         }
 
+        /* ROI 그리기 모드 안내 메시지 */
         .roi-drawing-mode::after {
             content: "ROI 그리기 모드 - 클릭하여 점 추가";
             position: absolute;
@@ -102,6 +115,7 @@
             z-index: 20;
         }
 
+        /* === [ROI 제어 버튼 섹션] === */
         .roi-controls {
             background: white;
             padding: 15px;
@@ -116,6 +130,7 @@
             font-size: 1.2em;
         }
 
+        /* === [버튼 스타일] === */
         .btn {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -125,14 +140,15 @@
             cursor: pointer;
             font-size: 14px;
             margin: 5px;
-            transition: all 0.3s ease;
+            transition: all 0.3s ease; /* 부드러운 호버 효과 */
         }
 
         .btn:hover {
-            transform: translateY(-2px);
+            transform: translateY(-2px); /* 호버 시 위로 이동 */
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
         }
 
+        /* === [버튼 색상 변형] === */
         .btn-success {
             background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
         }
@@ -145,32 +161,36 @@
             background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
         }
 
+        /* === [ROI 정보 표시] === */
         .roi-info {
             background: #e3f2fd;
             color: #1565c0;
             padding: 10px;
             border-radius: 6px;
             margin-bottom: 15px;
-            display: none;
+            display: none; /* 기본적으로 숨김 */
         }
 
         .roi-info.show {
-            display: block;
+            display: block; /* ROI 그리기 모드에서 표시 */
         }
 
+        /* === [통계 섹션] === */
         .stats-section {
             background: #f8f9fa;
             border-radius: 10px;
             padding: 20px;
         }
 
+        /* === [통계 그리드 레이아웃] === */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(2, 1fr); /* 2열 그리드 */
             gap: 15px;
             margin-top: 15px;
         }
 
+        /* === [통계 카드] === */
         .stat-card {
             background: white;
             padding: 20px;
@@ -179,6 +199,7 @@
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
 
+        /* === [통계 값 표시] === */
         .stat-value {
             font-size: 2.5em;
             font-weight: bold;
@@ -186,11 +207,13 @@
             margin-bottom: 5px;
         }
 
+        /* === [통계 라벨] === */
         .stat-label {
             font-size: 1em;
             color: #7f8c8d;
         }
 
+        /* === [상태 표시기] === */
         .status-indicator {
             display: inline-block;
             width: 12px;
@@ -199,26 +222,29 @@
             margin-right: 8px;
         }
 
+        /* === [상태별 색상] === */
         .status-running {
-            background: #27ae60;
-            animation: pulse 2s infinite;
+            background: #27ae60; /* 초록색 - 실행 중 */
+            animation: pulse 2s infinite; /* 깜빡이는 애니메이션 */
         }
 
         .status-stopped {
-            background: #e74c3c;
+            background: #e74c3c; /* 빨간색 - 정지됨 */
         }
 
         .status-drawing {
-            background: #f39c12;
+            background: #f39c12; /* 주황색 - ROI 그리기 모드 */
             animation: pulse 1s infinite;
         }
 
+        /* === [깜빡이는 애니메이션] === */
         @keyframes pulse {
             0% { opacity: 1; }
             50% { opacity: 0.5; }
             100% { opacity: 1; }
         }
 
+        /* === [시스템 상태 표시] === */
         .system-status {
             background: white;
             padding: 15px;
@@ -228,11 +254,12 @@
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
 
+        /* === [알림 메시지] === */
         .alert {
             padding: 10px;
             border-radius: 6px;
             margin-bottom: 10px;
-            display: none;
+            display: none; /* 기본적으로 숨김 */
         }
 
         .alert-success {
@@ -247,36 +274,46 @@
             border: 1px solid #f5c6cb;
         }
 
+        /* === [반응형 디자인] === */
         @media (max-width: 768px) {
             .main-content {
-                grid-template-columns: 1fr;
+                grid-template-columns: 1fr; /* 모바일에서는 1열로 변경 */
             }
             
             .stats-grid {
-                grid-template-columns: 1fr;
+                grid-template-columns: 1fr; /* 모바일에서는 1열로 변경 */
             }
         }
     </style>
 </head>
 <body>
+    <!-- === [메인 컨테이너] === -->
     <div class="container">
+        <!-- === [헤더] === -->
         <div class="header">
             <h1>🛡️ AI 안전 관제</h1>
             <p>실시간 안전장비 검출 및 위험 구역 모니터링 시스템</p>
         </div>
 
+        <!-- === [메인 콘텐츠] === -->
         <div class="main-content">
+            <!-- === [비디오 섹션] === -->
             <div class="video-section">
+                <!-- === [비디오 컨테이너] === -->
                 <div class="video-container" id="video-container">
+                    <!-- 실시간 비디오 스트림 -->
                     <img src="{{ url_for('video_feed') }}" class="video-feed" alt="실시간 비디오">
+                    <!-- 클릭 이벤트 처리를 위한 오버레이 -->
                     <div class="video-overlay" id="video-overlay"></div>
                 </div>
                 
+                <!-- === [ROI 정보 표시] === -->
                 <div class="roi-info" id="roi-info">
                     <strong>ROI 그리기 모드:</strong> 비디오를 클릭하여 ROI 점을 추가하세요. 최소 3개 점이 필요합니다.
                     <br>현재 점 수: <span id="roi-points-count">0</span>
                 </div>
                 
+                <!-- === [ROI 제어 버튼들] === -->
                 <div class="roi-controls">
                     <h3>🎯 ROI 영역 설정</h3>
                     <button class="btn btn-success" onclick="controlAction('start_roi_drawing')">ROI 그리기 시작</button>
@@ -285,38 +322,47 @@
                     <button class="btn btn-danger" onclick="controlAction('clear_roi')">ROI 지우기</button>
                 </div>
                 
+                <!-- === [알림 메시지] === -->
                 <div class="alert alert-success" id="success-alert"></div>
                 <div class="alert alert-error" id="error-alert"></div>
             </div>
 
+            <!-- === [통계 섹션] === -->
             <div class="stats-section">
+                <!-- === [시스템 상태 표시] === -->
                 <div class="system-status">
                     <span class="status-indicator status-running" id="status-indicator"></span>
                     <span id="status-text">실행 중</span>
                 </div>
 
+                <!-- === [통계 그리드] === -->
                 <div class="stats-grid">
+                    <!-- 검출된 사람 수 -->
                     <div class="stat-card">
                         <div class="stat-value" id="persons-detected">0</div>
                         <div class="stat-label">검출된 사람</div>
                     </div>
+                    <!-- 헬멧 착용자 수 -->
                     <div class="stat-card">
                         <div class="stat-value" id="with-helmets">0</div>
                         <div class="stat-label">헬멧 착용</div>
                     </div>
+                    <!-- 헬멧 미착용자 수 -->
                     <div class="stat-card">
                         <div class="stat-value" id="without-helmets">0</div>
                         <div class="stat-label">헬멧 미착용</div>
                     </div>
+                    <!-- 위험 구역 내 사람 수 -->
                     <div class="stat-card">
                         <div class="stat-value" id="in-danger-zone">0</div>
                         <div class="stat-label">위험 구역</div>
                     </div>
-                    <!-- 활성 추적 표시 -->
+                    <!-- 활성 추적 표시 (주석 처리됨) -->
                     <!-- <div class="stat-card">
                         <div class="stat-value" id="tracks_active">0</div>
                         <div class="stat-label">활성 추적</div> -->
                     </div>
+                    <!-- 현재 위험 이벤트 수 -->
                     <div class="stat-card">
                         <div class="stat-value" id="total-danger-events">0</div>
                         <div class="stat-label">현재 위험 이벤트</div>
@@ -326,24 +372,28 @@
         </div>
     </div>
 
+    <!-- === [JavaScript 코드] === -->
     <script>
-        let isDrawingMode = false;
-        let videoElement = null;
-        let overlayElement = null;
+        // === [전역 변수] ===
+        let isDrawingMode = false; // ROI 그리기 모드 상태
+        let videoElement = null; // 비디오 요소 참조
+        let overlayElement = null; // 오버레이 요소 참조
 
-        // Video click handler for ROI drawing
+        // === [비디오 클릭 이벤트 핸들러 설정] ===
         function setupVideoClickHandler() {
             videoElement = document.querySelector('.video-feed');
             overlayElement = document.getElementById('video-overlay');
             
+            // 오버레이에 클릭 이벤트 리스너 추가
             overlayElement.addEventListener('click', function(e) {
-                if (!isDrawingMode) return;
+                if (!isDrawingMode) return; // 그리기 모드가 아니면 무시
                 
+                // 클릭 좌표를 비디오 좌표계로 변환
                 const rect = videoElement.getBoundingClientRect();
                 const x = Math.round((e.clientX - rect.left) / rect.width * videoElement.naturalWidth);
                 const y = Math.round((e.clientY - rect.top) / rect.height * videoElement.naturalHeight);
                 
-                // Send click coordinates to server
+                // 서버로 클릭 좌표 전송
                 fetch('/api/roi_click', {
                     method: 'POST',
                     headers: {
@@ -354,6 +404,7 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
+                        // 성공 시 점 수 업데이트
                         document.getElementById('roi-points-count').textContent = data.points_count;
                         showAlert('success', data.message);
                     } else {
@@ -366,8 +417,9 @@
             });
         }
 
-        // Control actions
+        // === [제어 액션 함수] ===
         function controlAction(action) {
+            // 서버로 제어 액션 전송
             fetch('/api/control', {
                 method: 'POST',
                 headers: {
@@ -379,7 +431,7 @@
             .then(data => {
                 showAlert(data.status, data.message);
                 
-                // Handle ROI drawing mode
+                // ROI 그리기 모드 상태 처리
                 if (action === 'start_roi_drawing') {
                     isDrawingMode = true;
                     document.getElementById('video-container').classList.add('roi-drawing-mode');
@@ -391,29 +443,32 @@
                     document.getElementById('roi-points-count').textContent = '0';
                 }
                 
-                updateStatus();
+                updateStatus(); // 상태 업데이트
             })
             .catch(error => {
                 showAlert('error', '오류가 발생했습니다: ' + error);
             });
         }
 
-        // Show alerts
+        // === [알림 메시지 표시 함수] ===
         function showAlert(type, message) {
             const alertDiv = document.getElementById(type + '-alert');
             alertDiv.textContent = message;
             alertDiv.style.display = 'block';
             
+            // 3초 후 자동으로 숨김
             setTimeout(() => {
                 alertDiv.style.display = 'none';
             }, 3000);
         }
 
-        // Update statistics
+        // === [통계 업데이트 함수] ===
         function updateStats() {
+            // 서버에서 통계 데이터 가져오기
             fetch('/api/stats')
             .then(response => response.json())
             .then(data => {
+                // 각 통계 값 업데이트
                 document.getElementById('persons-detected').textContent = data.persons_detected || 0;
                 document.getElementById('with-helmets').textContent = data.people_with_helmets || 0;
                 document.getElementById('without-helmets').textContent = data.people_without_helmets || 0;
@@ -421,7 +476,7 @@
                 document.getElementById('tracks_active').textContent = data.tracks_active || 0;
                 document.getElementById('total-danger-events').textContent = data.total_danger_events || 0;
                 
-                // Update ROI drawing status
+                // ROI 그리기 상태 업데이트
                 if (data.roi_drawing_mode) {
                     isDrawingMode = true;
                     document.getElementById('video-container').classList.add('roi-drawing-mode');
@@ -434,14 +489,16 @@
             });
         }
 
-        // Update status
+        // === [상태 업데이트 함수] ===
         function updateStatus() {
+            // 서버에서 상태 정보 가져오기
             fetch('/api/stats')
             .then(response => response.json())
             .then(data => {
                 const indicator = document.getElementById('status-indicator');
                 const statusText = document.getElementById('status-text');
                 
+                // 시스템 상태에 따른 표시기 업데이트
                 if (data.system_status === 'drawing') {
                     indicator.className = 'status-indicator status-drawing';
                     statusText.textContent = 'ROI 그리기 모드';
@@ -465,14 +522,14 @@
             });
         }
 
-        // Auto-update statistics every second
-        setInterval(updateStats, 1000);
-        setInterval(updateStatus, 2000);
+        // === [자동 업데이트 설정] ===
+        setInterval(updateStats, 1000); // 1초마다 통계 업데이트
+        setInterval(updateStatus, 2000); // 2초마다 상태 업데이트
 
-        // Initial setup
-        setupVideoClickHandler();
-        updateStats();
-        updateStatus();
+        // === [초기 설정] ===
+        setupVideoClickHandler(); // 비디오 클릭 핸들러 설정
+        updateStats(); // 초기 통계 로드
+        updateStatus(); // 초기 상태 로드
     </script>
 </body>
 </html> 

@@ -52,7 +52,11 @@ class UnifiedROITracker:
         
         # Performance optimization
         self.detection_interval = detection_interval
-        self.last_detections = []
+        self.last_detections = {
+            'person_dets': [],
+            'helmet_boxes': [],
+            'no_helmet_boxes': []
+        }
         
         # Statistics
         self.frame_count = 0
