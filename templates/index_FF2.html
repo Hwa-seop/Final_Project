@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>HLS 실시간 스트리밍</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</head>
+<body>
+  <h2>실시간 영상 스트림</h2>
+  <video id="hls-video" controls autoplay muted width="640" height="480"></video>
+
+  <script>
+    const video = document.getElementById('hls-video');
+    const hlsSrc = "https://5671-163-152-224-142.ngrok-free.app/hls/stream.m3u8";
+
+    if (Hls.isSupported()) {
+      const hls = new Hls();
+      hls.loadSource(hlsSrc);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, function () {
+        video.play();
+      });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = hlsSrc;
+      video.addEventListener('loadedmetadata', function () {
+        video.play();
+      });
+    } else {
+      alert("HLS 스트리밍을 지원하지 않는 브라우저입니다.");
+    }
+  </script>
+</body>
+</html>
