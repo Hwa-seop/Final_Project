@@ -303,7 +303,9 @@
                 <div class="video-container" id="video-container">
                     <!-- 실시간 비디오 스트림 -->
                     <img src="{{ url_for('video_feed') }}" class="video-feed" alt="실시간 비디오">
-                    <!-- 클릭 이벤트 처리를 위한 오버레이 -->
+                    </video>
+                    <!-- ffmpeg rtmp://localhost/live/stream embedd-->
+                    <!-- 비디오 스트림을 위한 오버레이 -->
                     <div class="video-overlay" id="video-overlay"></div>
                 </div>
                 
@@ -389,9 +391,12 @@
                 if (!isDrawingMode) return; // 그리기 모드가 아니면 무시
                 
                 // 클릭 좌표를 비디오 좌표계로 변환
+                const width = videoElement.videoWidth || videoElement.offsetWidth;
+                const height = videoElement.videoHeight || videoElement.offsetHeight;
+
                 const rect = videoElement.getBoundingClientRect();
-                const x = Math.round((e.clientX - rect.left) / rect.width * videoElement.naturalWidth);
-                const y = Math.round((e.clientY - rect.top) / rect.height * videoElement.naturalHeight);
+                const x = Math.round((e.clientX - rect.left) / rect.width * width);
+                const y = Math.round((e.clientY - rect.top) / rect.height * height);
                 
                 // 서버로 클릭 좌표 전송
                 fetch('/api/roi_click', {
@@ -531,5 +536,7 @@
         updateStats(); // 초기 통계 로드
         updateStatus(); // 초기 상태 로드
     </script>
+
+
 </body>
 </html> 

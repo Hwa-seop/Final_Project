@@ -15,6 +15,7 @@ Flask Web Application for Unified ROI Tracker
 """
 # 기본 모듈 및 외부 의존성
 from flask import Flask, render_template, Response, jsonify, request
+import subprocess
 import cv2
 import threading
 import time
@@ -54,12 +55,40 @@ total_danger_events = 0  # 총 위험 이벤트 카운터 (누적)
 db_manager = None
 current_session_id = None
 
+# 카메라 모드 변수
+FFMPEG_MODE = False  # FFMPEG 모드 (FFmpeg를 통한 스트리밍)
+MJPEG_MODE = True  # MJPEG 모드 (Flask를 통한 MJPEG 스트리밍)
+
+# Wan 송출 모드
+# LOCALTUNNEL_MODE = False  # 로컬 터널 모드 (로컬에서 실행 시)
+# NGROK = False  # Ngrok 모드 (외부 접근을 위한 Ngrok 사용)
+
+if FFMPEG_MODE:
+    ffmpeg = subprocess.Popen([
+        'ffmpeg',
+        '-y', '-f', 'rawvideo', '-vcodec', 'rawvideo',
+        '-pix_fmt', 'bgr24', '-s', '640x480', '-r', '30',
+        '-i', '-',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+        '-f', 'flv', 'rtmp://localhost/live/stream'
+    ], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def monitor_ffmpeg_errors():
+        while True:
+            output = ffmpeg.stderr.readline()
+            if output == '' and ffmpeg.poll() is not None:
+                break
+            if output:
+                print(f"[FFmpeg STDERR] {output.strip()}")
+
+    threading.Thread(target=monitor_ffmpeg_errors, daemon=True).start()
+
 # === [기본 설정값 정의] ===
 # GStreamer configuration
 GSTREAMER_CONFIG = {
     # ───────── V4L2 카메라 (일반적 환경) ─────────
     'webcam': (
-        'v4l2src device=/dev/video2 ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1 ! appsink'
+        'v4l2src device=/dev/video0 ! videoconvert ! video/x-raw,width=640,height=480,framerate=30/1 ! appsink'
     ),
     'usb_camera': (
         'v4l2src device=/dev/video1 ! videoconvert ! '
@@ -372,6 +401,7 @@ def camera_loop():
     처리된 프레임을 웹 스트리밍용으로 인코딩하고 통계를 업데이트합니다.
     """
     global output_frame, stats, is_running, roi_drawing_mode, roi_points, frames_processed, last_frame_time, db_manager
+    global MJPEG_MODE, FFMPEG_MODE
     
     while is_running:
         if camera is None or not camera.isOpened():
@@ -440,18 +470,28 @@ def camera_loop():
                 frame_stats['total_danger_events'] = total_danger_events
                 frames_processed += 1
             
-            if processed_frame is not None:
-                # Encode frame for web streaming
-                ret, buffer = cv2.imencode('.jpg', processed_frame)
-                if ret:
-                    with lock:
-                        output_frame = buffer.tobytes()
-                        # Create a new stats dictionary to avoid type issues
-                        stats = {
-                            'frames_processed': frames_processed,
-                            'last_frame_time': str(last_frame_time),  # Convert to string to avoid type issues
-                            **frame_stats
-                        }
+            if MJPEG_MODE:
+                if processed_frame is not None:
+                    # Encode frame for web streaming
+                    ret, buffer = cv2.imencode('.jpg', processed_frame)
+                    if ret:
+                        with lock:
+                            output_frame = buffer.tobytes()
+                            # Create a new stats dictionary to avoid type issues
+                            stats = {
+                                'frames_processed': frames_processed,
+                                'last_frame_time': str(last_frame_time),  # Convert to string to avoid type issues
+                                **frame_stats
+                            }
+            if FFMPEG_MODE:
+                if ffmpeg:
+                    try:
+                        ffmpeg.stdin.write(processed_frame.tobytes())
+                    except Exception as e:
+                        print(f"[FFmpeg 송출 오류] {e}")
+                        FFMPEG_MODE = False
+            if MJPEG_MODE and FFMPEG_MODE:
+                raise ValueError("MJPEG_MODE와 FFMPEG_MODE는 동시에 True일 수 없습니다.")            
                         
         except Exception as e:
             print(f"❌ 프레임 처리 오류: {e}")
@@ -516,15 +556,19 @@ def index():
 def video_feed():
     """
     비디오 스트리밍 라우트입니다.
-    
+    MJPEG 또는 FFMPEG 스트리밍 모드에 따라 프레임을 생성합니다.
     Returns:
         Response: MJPEG 스트림 응답
         Response: FFMPEG 스트림 응답
     """
-    return Response(generate_frames(),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
-    return Response(generate_frames(),
-                    mimetype='video/mp4')
+    if MJPEG_MODE:
+        return Response(generate_frames(),
+                        mimetype='multipart/x-mixed-replace; boundary=frame')
+    elif FFMPEG_MODE:
+        # FFMPEG 스트림을 위한 라우트
+        return Response(ffmpeg.stdout, mimetype='video/mp4')
+    else:
+        return Response("Streaming mode not enabled.", status=400)
 
 @app.route('/api/stats')
 def get_stats():
