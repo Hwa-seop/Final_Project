@@ -35,14 +35,18 @@ class FaceManager:
                     data = f.read().strip()
                     if not data:
                         return {}
-                    return json.loads(data)
-            except Exception:
+                    loaded = json.loads(data)
+                    # 리스트 → numpy 배열로 변환
+                    return {k: np.array(v) for k, v in loaded.items()}
+            except Exception as e:
+                print(f"[X] Failed to load face database: {e}")
                 return {}
         return {}
 
     def save_db(self):
         with open(self.db_path, 'w') as f:
-            json.dump(self.face_db, f)
+            serializable_db = {k: v.tolist() for k, v in self.face_db.items()}
+            json.dump(serializable_db, f)
 
     def register_face(self, username, image_path):
         """사용자 얼굴 등록"""
@@ -65,15 +69,14 @@ class FaceManager:
         vec2 = np.array(vec2)
         return 1 - (np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2)))
 
-    def verify_face(self, img_path, threshold=0.4):
+    def verify_face(self, img_path, threshold=0.5, enforce_detection=True):
         """입력 얼굴이 등록된 사용자 중 누구인지 확인"""
         try:
             input_emb = DeepFace.represent(
                 img_path=img_path,
                 model_name=self.model_name,
-                # enforce_detection=False,
-                # detector_backend='opencv'
-                )[0]['embedding']
+                enforce_detection=enforce_detection
+            )[0]['embedding']
             best_match = None
             best_dist = float('inf')
 

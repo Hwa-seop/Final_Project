@@ -22,10 +22,11 @@ import subprocess
 import signal
 import sys
 import json
-from unified_roi_tracker_module import UnifiedROITracker
+from unified_roi_tracker_module_fin import UnifiedROITracker
 from database_manager_patched import DatabaseManager, init_database, get_database_manager
 from face_unified import FaceUnified  # FaceUnified 모듈 경로에 맞게 조정
-face_unified = FaceUnified()
+face_unified = FaceUnified() 
+
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 # === [Flask 앱 초기화 및 전역 변수] ===
@@ -44,6 +45,9 @@ roi_drawing_mode = False  # ROI 그리기 모드
 roi_points = []  # ROI 포인트
 frames_processed = 0  # 처리된 프레임 수
 last_frame_time = 0  # 마지막 프레임 시간
+
+track_id_to_name = {} # 트랙 ID와 이름 매핑 (예: 헬멧 착용 여부 등)
+
 
 # ID 기반 추적 및 통계 관리
 # Statistics tracking for unique IDs
@@ -237,7 +241,8 @@ def initialize_camera():
             conf_thresh=DEFAULT_CONFIG['conf_thresh'],
             max_age=DEFAULT_CONFIG['max_age'],
             device=DEFAULT_CONFIG['device'],
-            detection_interval=DEFAULT_CONFIG['detection_interval']
+            detection_interval=DEFAULT_CONFIG['detection_interval'],
+            threshold=0.5            
         )
         return True
     except Exception as e:

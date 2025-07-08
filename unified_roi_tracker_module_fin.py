@@ -1,5 +1,6 @@
 import cv2
 import torch
+import os
 import numpy as np
 import time
 from deep_sort_realtime.deepsort_tracker import DeepSort
@@ -13,8 +14,15 @@ class UnifiedROITracker:
     region and mark them as dangerous.
     """
     
-    def __init__(self, model_path='/home/lws/kulws2025/kubig2025/final_project/yolov5/helmet_detection/helmet_detection/weights/best.pt', 
-                 conf_thresh=0.2, max_age=30, device='auto', detection_interval=1):
+    def __init__(self, model_path, 
+                conf_thresh=0.2, 
+                max_age=30, 
+                device='auto',
+                detection_interval=1,
+                threshold=0.5
+                ):
+        self.threshold = threshold
+            
         """
         Initialize the UnifiedROITracker.
         
@@ -41,10 +49,18 @@ class UnifiedROITracker:
         # DeepSORT 초기화
         self.tracker = DeepSort(max_age=max_age, n_init=3)
 
+        from face_unified import FaceUnified  # 클래스 상단에서 import
+
+        self.face_recognizer = FaceUnified()
+        self.track_id_to_name = {}                # track_id → 이름 매핑 저장 딕셔너리
+        self.face_recognizer.face_manager.load_db() # 얼굴 인식용 인스턴스 생성
+
         # ROI state
         self.roi_points = []
         self.zone_locked = False
         self.zone_poly = None
+        
+        self.threshold = threshold  # 얼굴 인식에 사용할 유사도 임계값 저장
         
         # Tracking state
         self.id_has_helmet = {}
@@ -226,6 +242,31 @@ class UnifiedROITracker:
             x1, y1, x2, y2 = map(int, track.to_ltrb())
             track_id = track.track_id
             
+             # 얼굴 영역 크롭 후 임시 파일 저장 → 인식
+            h = y2 - y1
+            face_img = frame[y1:y2, x1:x2]
+            try:
+                temp_path = f"temp_face_{track_id}.jpg"
+                cv2.imwrite(temp_path, face_img)
+
+                found, name, confidence = self.face_recognizer.face_manager.verify_face(temp_path, 
+                                                                                        threshold=self.threshold, 
+                                                                                        enforce_detection=False)
+                # 기존 인식값이 있을 경우 유지, 새로 인식되면 업데이트
+                if track_id not in self.track_id_to_name:
+                    self.track_id_to_name[track_id] = name if found else "Unknown"
+                elif found and self.track_id_to_name[track_id] == "Unknown":
+                    self.track_id_to_name[track_id] = name
+
+            except Exception as e:
+                print(f"[FaceID 오류] ID {track_id}: {e}")
+                if track_id not in self.track_id_to_name:
+                    self.track_id_to_name[track_id] = "Error"
+
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+        
             # 머리 영역 기준 (상단 20%)
             head_box = [x1, y1, x2, y1 + int((y2 - y1) * 0.2)]
 
@@ -269,7 +310,8 @@ class UnifiedROITracker:
 
                 # 시각화
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                cv2.putText(frame, f"ID:{track_id} {status}", (x1, y1 - 10), 
+                display_name = self.track_id_to_name.get(track_id, "Unknown")
+                cv2.putText(frame, f"{display_name} (ID:{track_id}) - {status}", (x1, y1 - 10), 
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
                 
                 # 중심점 표시

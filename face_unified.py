@@ -1,8 +1,8 @@
 import os
 import sys
 import cv2
-import numpy as np1
-from face_manager import FaceManager
+import numpy as np
+from face_manager_fin import FaceManager
 
 # TensorFlow 경고 메시지 숨기기
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -18,7 +18,7 @@ print("[DEBUG] Exists:", os.path.exists(haar_path))
 
 
 class FaceUnified:
-    def __init__(self, threshold=0.6):
+    def __init__(self, threshold=0.5):
         self.face_manager = FaceManager()  # FaceManager 인스턴스 생성
         self.cap = None
         self.threshold = threshold
@@ -35,6 +35,7 @@ class FaceUnified:
         """웹캠 종료"""
         if self.cap:
             self.cap.release()
+            self.cap = None
         cv2.destroyAllWindows()
     
     def draw_text_with_background(self, frame, text, position, font_scale=0.7, 
@@ -82,6 +83,7 @@ class FaceUnified:
             key = cv2.waitKey(1) & 0xFF
             if key == 27:  # ESC
                 print("[CANCEL] Capture cancelled.")
+                self.stop_camera()
                 break
             elif key == 32:  # 스페이스바
                 # 이미지 저장
@@ -114,10 +116,73 @@ class FaceUnified:
         if not db or not isinstance(db, dict):
             return True
         for k, v in db.items():
-            if str(k).strip() and v:
+            if isinstance(v, np.ndarray) and v.size > 0:
                 return False
         return True
 
+    def register_face_multiple_images(self, username, num_images=3):
+        os.makedirs("faces", exist_ok=True)
+        captured_embeddings = []
+
+        if not self.start_camera():
+            print("[X] Cannot open webcam.")
+            return False
+
+        print(f"[INFO] Registering '{username}' - capturing {num_images} face images...")
+        count = 0
+        while count < num_images:
+            ret, frame = self.cap.read()
+            if not ret:
+                print("[X] Failed to read frame.")
+                continue
+
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+
+            for (x, y, w, h) in faces:
+                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 2)
+                cv2.putText(frame, f"Face {count+1}/{num_images} - Press SPACE to capture", 
+                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                cv2.imshow("Register Face", frame)
+
+                key = cv2.waitKey(0) & 0xFF
+                if key == 32:  # SPACE
+                    face_img = frame[y:y+h, x:x+w]
+                    save_path = f"faces/{username}_{count+1}.jpg"
+                    cv2.imwrite(save_path, face_img)
+
+                    # 임베딩 추출
+                    from deepface import DeepFace
+                    emb = DeepFace.represent(img_path=save_path, model_name=self.face_manager.model_name, 
+                                         enforce_detection=False)[0]['embedding']
+                    captured_embeddings.append(emb)
+                    print(f"[OK] Captured {count+1}/{num_images}")
+                    count += 1
+                elif key == 27:
+                    print("[CANCEL] Registration cancelled.")
+                    self.stop_camera()
+                    return False
+
+            if len(faces) == 0:
+                cv2.putText(frame, "No face detected - adjust camera", (10, 30), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                cv2.imshow("Register Face", frame)
+                cv2.waitKey(1)
+
+        self.stop_camera()
+
+        # 평균 임베딩 저장
+        if captured_embeddings:
+            avg_emb = np.mean(captured_embeddings, axis=0)
+            self.face_manager.face_db[username] = avg_emb
+            self.face_manager.save_db()
+            print(f"[✅] '{username}' 등록 완료 (average of {num_images} faces)")
+            return True
+        else:
+            print("[X] No embeddings captured.")
+            return False
+
+    
     def realtime_face_recognition(self):
         if self.is_db_empty():
             print("\n[Registered Users]")
@@ -150,7 +215,7 @@ class FaceUnified:
                 temp_face_path = "temp_face_crop.jpg"
                 cv2.imwrite(temp_face_path, face_img)
                 try:
-                    found, username, confidence = self.face_manager.verify_face(temp_face_path, self.threshold)
+                    found, username, confidence = self.face_manager.verify_face(temp_face_path, self.threshold, enforce_detection=False)
                     if found:
                         label = f"{username}"
                         color = (0, 255, 0)
@@ -264,6 +329,12 @@ class FaceUnified:
         if os.path.exists(img_path):
             os.remove(img_path)
             print(f"[OK] Deleted image file: {img_path}")
+        
+        # ✅ 추가: 여러 장 삭제
+        for i in range(1, 6):  # 최대 5장까지 탐색
+            multi_img = f"faces/{username}_{i}.jpg"
+            if os.path.exists(multi_img):
+                os.remove(multi_img)
         # DB에서 삭제
         del self.face_manager.face_db[username]
         self.face_manager.save_db()
@@ -291,7 +362,7 @@ class FaceUnified:
                 if choice == "1":
                     username = input("Enter user name to register: ").strip()
                     if username:
-                        self.register_face_with_camera(username)
+                        self.register_face_multiple_images(username, num_images=5)  # ✅ 여러 장 등록으로 교체
                     else:
                         print("[X] Please enter a name.")
                 elif choice == "2":
