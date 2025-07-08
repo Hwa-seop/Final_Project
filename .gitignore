@@ -3,9 +3,11 @@ venv/
 ngrok-stable-linux-amd64.zip/
 ngrok-v3-stable-linux-amd64.tgz/
 ngrok-v3-stable-linux-amd64.zip/
-
-Todo.md/
-text/
-sh/
-
-
+faces/
+opencv/
+Todo.md
+*.txt
+*.sh
+*.pyc
+*.md
+*.json

@@ -323,6 +323,7 @@
                     <button class="btn btn-danger" onclick="controlAction('clear_roi')">ROI 지우기</button>
                 </div>
                 
+            </div>
                 <!-- === [알림 메시지] === -->
                 <div class="alert alert-success" id="success-alert"></div>
                 <div class="alert alert-error" id="error-alert"></div>
@@ -368,6 +369,19 @@
                         <div class="stat-value" id="total-danger-events">0</div>
                         <div class="stat-label">현재 위험 이벤트</div>
                     </div>
+                </div>
+                        <!-- === [얼굴 등록 섹션] === -->
+                <div class="face-register-section" style="background:#f8f9fa; padding:20px; border-radius:10px; margin-top:20px;">
+                    <h3>👤 작업자 얼굴 등록</h3>
+                    <form method="POST" enctype="multipart/form-data" action="/upload_face">
+                        <label for="username">이름:</label><br>
+                        <input type="text" id="username" name="username" required><br><br>
+
+                        <label for="image">얼굴 이미지 업로드:</label><br>
+                        <input type="file" id="image" name="image" accept="image/*" required><br><br>
+
+                        <button class="btn btn-success" type="submit">얼굴 등록</button>
+                    </form>
                 </div>
             </div>
         </div>

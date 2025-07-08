@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """
-Flask Web Application for Unified ROI Tracker
-
 이 Flask 앱은 실시간 헬멧 검출 및 ROI 추적을 위한 웹 인터페이스를 제공합니다.
 사용자는 웹 브라우저를 통해 실시간 비디오 스트림을 보고, 설정을 제어하고, 통계를 모니터링할 수 있습니다.
 
@@ -15,17 +13,19 @@ Flask Web Application for Unified ROI Tracker
 """
 # 기본 모듈 및 외부 의존성
 from flask import Flask, render_template, Response, jsonify, request
-import subprocess
 import cv2
-import threading
-import time
 from functools import lru_cache
-import json
 import os
+import time
+import threading
+import subprocess
 import signal
 import sys
+import json
 from unified_roi_tracker_module import UnifiedROITracker
 from database_manager_patched import DatabaseManager, init_database, get_database_manager
+from face_unified import FaceUnified  # FaceUnified 모듈 경로에 맞게 조정
+face_unified = FaceUnified()
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 # === [Flask 앱 초기화 및 전역 변수] ===
@@ -872,6 +872,49 @@ def get_database_stats():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
+@app.route('/api/register_face', methods=['POST'])
+def register_face():
+    """
+    사용자 얼굴을 등록합니다.
+    JSON 형식: { "username": "worker1" }
+    """
+    data = request.get_json()
+    username = data.get("username")
+
+    if not username:
+        return jsonify({"status": "error", "message": "Username is required."})
+
+    try:
+        success = face_unified.register_face_with_camera(username)
+        if success:
+            return jsonify({"status": "success", "message": f"{username} 등록 완료"})
+        else:
+            return jsonify({"status": "error", "message": f"{username} 등록 실패"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/upload_face', methods=['GET', 'POST'])
+def upload_face():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        file = request.files.get('image')
+
+        if not username or not file:
+            return "이름과 이미지를 모두 입력하세요.", 400
+
+        save_dir = os.path.join(app.root_path, "faces")
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, f"{username}.jpg")
+        file.save(save_path)
+
+        try:
+            face_unified.face_manager.register_face(username, save_path)
+            return f"{username} 등록 완료"
+        except Exception as e:
+            return f"등록 실패: {e}", 500
+
+    return render_template("upload_face.html")
+    
 if __name__ == '__main__':
     # Create templates directory if it doesn't exist
     os.makedirs('templates', exist_ok=True)
@@ -896,5 +939,6 @@ if __name__ == '__main__':
         app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
     else:
         print("❌ 카메라 초기화 실패") 
+
 
         
