@@ -145,7 +145,7 @@ class FaceUnified:
                             (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
                 cv2.imshow("Register Face", frame)
 
-                key = cv2.waitKey(0) & 0xFF
+                key = cv2.waitKey(1) & 0xFF
                 if key == 32:  # SPACE
                     face_img = frame[y:y+h, x:x+w]
                     save_path = f"faces/{username}_{count+1}.jpg"
