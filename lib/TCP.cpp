@@ -1,0 +1,89 @@
+// TCP통신 
+
+
+#include <ESP8266WiFi.h>
+
+// WiFi 설정
+const char* ssid = "turtle";
+const char* password = "turtlebot3";
+
+// 서버 정보
+const char* server_ip = "192.168.0.67"; // 서버 IP
+const uint16_t server_port = 8000;
+
+// 하드웨어 핀 정의
+#define LED_PIN D2
+#define BUZZER_PIN D1
+
+WiFiClient client;
+
+void sendStatus() {
+    String payload = "{\"led\":" + String(digitalRead(LED_PIN)) + ",\"buzzer\":" + String(digitalRead(BUZZER_PIN)) + "}\n";
+    client.print(payload);
+}
+
+void setup() {
+    Serial.begin(115200);
+    pinMode(LED_PIN, OUTPUT);
+    pinMode(BUZZER_PIN, OUTPUT);
+    
+    // WiFi 연결
+    WiFi.begin(ssid, password);
+    Serial.print("WiFi connecting");
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("\nWiFi connected!");
+
+    // 서버 연결 시도
+    if (client.connect(server_ip, server_port)) {
+        Serial.println("서버에 TCP 연결 성공!");
+        // 연결되면 상태 전송
+        sendStatus();
+    } else {
+        Serial.println("서버에 TCP 연결 실패!");
+    }
+}
+
+
+void loop() {
+
+  // 서버로부터 명령 수신
+  if (client.connected()) {
+      String msg = client.readStringUntil('\n');
+      Serial.print("서버로부터 수신: ");
+      Serial.println(msg);
+
+      int led = msg.indexOf("\"led\":1") != -1 ? 0 : 1;
+      int buzzer = msg.indexOf("\"buzzer\":1") != -1 ? 1000 : 0;
+      digitalWrite(LED_PIN, led);
+      tone(BUZZER_PIN, buzzer);
+
+      // 상태 변경 시 서버에 다시 상태 전송
+      sendStatus();
+  }
+
+  if(!client.connected()){
+    delay(1000);
+    Serial.println("서버와 연결이 끊어졌습니다. 재연결 시도 중...");
+    // 서버와 연결이 끊어진 경우 재연결 시도
+    if (!client.connected()) {
+        Serial.println("서버에 재연결 시도 중...");
+        if (client.connect(server_ip, server_port)) {
+            Serial.println("서버에 TCP 재연결 성공!");
+            // 재연결되면 상태 전송
+            sendStatus();
+        } else {
+            Serial.println("서버에 TCP 재연결 실패!");
+        }
+    }
+  }
+
+  // 10초마다 상태 전송
+  static unsigned long lastSend = 0;
+  if (millis() - lastSend > 10000) {
+      sendStatus();
+      lastSend = millis();
+  }
+}
