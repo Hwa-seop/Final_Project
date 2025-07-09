@@ -8,12 +8,13 @@ const char* ssid = "turtle";
 const char* password = "turtlebot3";
 
 // 서버 정보
-const char* server_ip = "192.168.0.74"; // 서버 IP
+const char* server_ip = "192.168.83.128"; // 서버 IP
 const uint16_t server_port = 5000;
 
 // 하드웨어 핀 정의
 #define LED_PIN D2
 #define BUZZER_PIN D1
+#define DEVICE_ID "helmet1"  // 기기마다 고유 이름
 
 WiFiClient client;
 
@@ -51,6 +52,7 @@ void loop() {
 
   // 서버로부터 명령 수신
   if (client.connected()) {
+      client.println("id:" + String(DEVICE_ID));
       String msg = client.readStringUntil('\n');
       Serial.print("서버로부터 수신: ");
       Serial.println(msg);
