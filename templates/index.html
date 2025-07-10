@@ -46,7 +46,7 @@
         }
 
         .header p {
-            font-size: 1.1em;
+            font-size: 1.5em;
             opacity: 0.9;
         }
 
@@ -111,7 +111,7 @@
             color: white;
             padding: 5px 10px;
             border-radius: 5px;
-            font-size: 12px;
+            font-size: 25px;
             z-index: 20;
         }
 
@@ -127,7 +127,8 @@
         .roi-controls h3 {
             color: #2c3e50;
             margin-bottom: 15px;
-            font-size: 1.2em;
+            font-size: 1.5em;
+
         }
 
         /* === [버튼 스타일] === */
@@ -138,7 +139,7 @@
             padding: 10px 15px;
             border-radius: 6px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 18px;
             margin: 5px;
             transition: all 0.3s ease; /* 부드러운 호버 효과 */
         }
@@ -201,7 +202,7 @@
 
         /* === [통계 값 표시] === */
         .stat-value {
-            font-size: 2.5em;
+            font-size: 2.0em;
             font-weight: bold;
             color: #667eea;
             margin-bottom: 5px;
@@ -209,7 +210,7 @@
 
         /* === [통계 라벨] === */
         .stat-label {
-            font-size: 1em;
+            font-size: 1.3em;
             color: #7f8c8d;
         }
 
@@ -291,7 +292,7 @@
     <div class="container">
         <!-- === [헤더] === -->
         <div class="header">
-            <h1>🛡️ AI 안전 관제</h1>
+            <h1> AI 안전 관제</h1>
             <p>실시간 안전장비 검출 및 위험 구역 모니터링 시스템</p>
         </div>
 
@@ -302,7 +303,8 @@
                 <!-- === [비디오 컨테이너] === -->
                 <div class="video-container" id="video-container">
                     <!-- 실시간 비디오 스트림 -->
-                    <img src="{{ url_for('video_feed') }}" class="video-feed" alt="실시간 비디오">
+                    <img src="{{ url_for('video_feed') }}" class="video-feed" alt="실시간 비디오"style="width:640px;height:480px;">
+                    </video>
                     <!-- ffmpeg rtmp://localhost/live/stream embedd-->
                     <!-- 비디오 스트림을 위한 오버레이 -->
                     <div class="video-overlay" id="video-overlay"></div>
@@ -316,14 +318,13 @@
                 
                 <!-- === [ROI 제어 버튼들] === -->
                 <div class="roi-controls">
-                    <h3>🎯 ROI 영역 설정</h3>
+                    <h3> ROI 영역 설정</h3>
                     <button class="btn btn-success" onclick="controlAction('start_roi_drawing')">ROI 그리기 시작</button>
                     <button class="btn btn-success" onclick="controlAction('finish_roi_drawing')">ROI 완료</button>
                     <button class="btn btn-warning" onclick="controlAction('cancel_roi_drawing')">ROI 취소</button>
                     <button class="btn btn-danger" onclick="controlAction('clear_roi')">ROI 지우기</button>
                 </div>
                 
-            </div>
                 <!-- === [알림 메시지] === -->
                 <div class="alert alert-success" id="success-alert"></div>
                 <div class="alert alert-error" id="error-alert"></div>
@@ -359,29 +360,11 @@
                         <div class="stat-value" id="in-danger-zone">0</div>
                         <div class="stat-label">위험 구역</div>
                     </div>
-                    <!-- 활성 추적 표시 (주석 처리됨) -->
-                    <!-- <div class="stat-card">
-                        <div class="stat-value" id="tracks_active">0</div>
-                        <div class="stat-label">활성 추적</div> -->
-                    </div>
                     <!-- 현재 위험 이벤트 수 -->
                     <div class="stat-card">
                         <div class="stat-value" id="total-danger-events">0</div>
                         <div class="stat-label">현재 위험 이벤트</div>
                     </div>
-                </div>
-                        <!-- === [얼굴 등록 섹션] === -->
-                <div class="face-register-section" style="background:#f8f9fa; padding:20px; border-radius:10px; margin-top:20px;">
-                    <h3>👤 작업자 얼굴 등록</h3>
-                    <form method="POST" enctype="multipart/form-data" action="/upload_face">
-                        <label for="username">이름:</label><br>
-                        <input type="text" id="username" name="username" required><br><br>
-
-                        <label for="image">얼굴 이미지 업로드:</label><br>
-                        <input type="file" id="image" name="image" accept="image/*" required><br><br>
-
-                        <button class="btn btn-success" type="submit">얼굴 등록</button>
-                    </form>
                 </div>
             </div>
         </div>

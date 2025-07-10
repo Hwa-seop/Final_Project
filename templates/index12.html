@@ -51,19 +51,21 @@
         }
 
         /* === [메인 콘텐츠 레이아웃] === */
-        .main-content {
-            display: grid;
-            grid-template-columns: 2fr 1fr; /* 비디오:통계 = 2:1 비율 */
+        .main-content { 
+            display: flex;
             gap: 20px;
             padding: 20px;
         }
 
         /* === [비디오 섹션] === */
         .video-section {
+            flex: 1;
             background: #f8f9fa;
             border-radius: 10px;
             padding: 20px;
-            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
         }
 
         /* === [비디오 컨테이너] === */
@@ -184,10 +186,9 @@
 
         /* === [통계 그리드 레이아웃] === */
         .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr); /* 2열 그리드 */
-            gap: 15px;
-            margin-top: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
 
         /* === [통계 카드] === */
@@ -303,7 +304,6 @@
                 <div class="video-container" id="video-container">
                     <!-- 실시간 비디오 스트림 -->
                     <img src="{{ url_for('video_feed') }}" class="video-feed" alt="실시간 비디오">
-                    </video>
                     <!-- ffmpeg rtmp://localhost/live/stream embedd-->
                     <!-- 비디오 스트림을 위한 오버레이 -->
                     <div class="video-overlay" id="video-overlay"></div>
@@ -322,21 +322,22 @@
                     <button class="btn btn-success" onclick="controlAction('finish_roi_drawing')">ROI 완료</button>
                     <button class="btn btn-warning" onclick="controlAction('cancel_roi_drawing')">ROI 취소</button>
                     <button class="btn btn-danger" onclick="controlAction('clear_roi')">ROI 지우기</button>
+                    <!-- === [알림 메시지] === -->
+                    <div class="alert alert-success" id="success-alert"></div>
+                    <div class="alert alert-error" id="error-alert"></div>
                 </div>
                 
-                <!-- === [알림 메시지] === -->
-                <div class="alert alert-success" id="success-alert"></div>
-                <div class="alert alert-error" id="error-alert"></div>
             </div>
-
-            <!-- === [통계 섹션] === -->
-            <div class="stats-section">
-                <!-- === [시스템 상태 표시] === -->
+        </div>
+        
+        <!-- === [통계 섹션] === -->
+        <div class="stats-section">
+            <!-- === [시스템 상태 표시] === -->
                 <div class="system-status">
                     <span class="status-indicator status-running" id="status-indicator"></span>
                     <span id="status-text">실행 중</span>
                 </div>
-
+                
                 <!-- === [통계 그리드] === -->
                 <div class="stats-grid">
                     <!-- 검출된 사람 수 -->
@@ -380,7 +381,7 @@
         let isDrawingMode = false; // ROI 그리기 모드 상태
         let videoElement = null; // 비디오 요소 참조
         let overlayElement = null; // 오버레이 요소 참조
-
+        
         // === [비디오 클릭 이벤트 핸들러 설정] ===
         function setupVideoClickHandler() {
             videoElement = document.querySelector('.video-feed');

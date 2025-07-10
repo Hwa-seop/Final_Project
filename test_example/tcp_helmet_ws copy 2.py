@@ -88,35 +88,39 @@ class HelmetController:
         if status not in ["wearing", "removed"]:
             print(f"잘못된 헬멧 상태: {status}")
             return False
-
+        
+        # # 상태가 변경된 경우에만 처리
+        # if self.helmet_status == status:
+        #     return True
+        
         self.status_history.append(status)
-        if len(self.status_history) > 5:
+        if len(self.status_history) > 3:
             self.status_history.pop(0)
 
         # 최근 5프레임 모두 "removed"일 때만 전송
-            if self.status_history.count("removed") >= 4 and self.helmet_status != "removed":
-                self.helmet_status = "removed"
-            elif self.status_history.count("wearing") >= 3 and self.helmet_status != "wearing":
-                self.helmet_status = "wearing"
+        if self.status_history.count("removed") == 3 and self.helmet_status != "removed":
+            self.helmet_status = "removed"
+        elif self.status_history.count("wearing") == 3 and self.helmet_status != "wearing":
+            self.helmet_status = "wearing"
+        
+        # old_status = self.helmet_status
+        # self.helmet_status = status
+        
+        # print(f"헬멧 상태 변경: {old_status} -> {status}")
+        
+        if self.helmet_status == "removed":
+            # 헬멧 벗음 감지 - 긴급 알림
+            success = self.emergency_alert()
+            if success and self.status_callback:
+                self.status_callback("removed", "긴급 알림 활성화")
+            return success
             
-            # old_status = self.helmet_status
-            # self.helmet_status = status
-            
-            # print(f"헬멧 상태 변경: {old_status} -> {status}")
-            
-            if self.helmet_status == "removed":
-                # 헬멧 벗음 감지 - 긴급 알림
-                success = self.emergency_alert()
-                if success and self.status_callback:
-                    self.status_callback("removed", "긴급 알림 활성화")
-                return success
-                
-            elif self.helmet_status == "wearing":
-                # 헬멧 착용 감지 - 알림 해제
-                success = self.clear_alert()
-                if success and self.status_callback:
-                    self.status_callback("wearing", "알림 해제")
-                return success
+        elif self.helmet_status == "wearing":
+            # 헬멧 착용 감지 - 알림 해제
+            success = self.clear_alert()
+            if success and self.status_callback:
+                self.status_callback("wearing", "알림 해제")
+            return success
     
     def set_status_callback(self, callback_func):
         """헬멧 상태 변경 시 호출될 콜백 함수 설정"""

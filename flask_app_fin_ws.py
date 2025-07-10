@@ -71,25 +71,25 @@ MJPEG_MODE = True  # MJPEG 모드 (Flask를 통한 MJPEG 스트리밍)
 # LOCALTUNNEL_MODE = False  # 로컬 터널 모드 (로컬에서 실행 시)
 # NGROK = False  # Ngrok 모드 (외부 접근을 위한 Ngrok 사용)
 
-if FFMPEG_MODE:
-    ffmpeg = subprocess.Popen([
-        'ffmpeg',
-        '-y', '-f', 'rawvideo', '-vcodec', 'rawvideo',
-        '-pix_fmt', 'bgr24', '-s', '640x480', '-r', '30',
-        '-i', '-',
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
-        '-f', 'flv', 'rtmp://localhost/live/stream'
-    ], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+# if FFMPEG_MODE:
+#     ffmpeg = subprocess.Popen([
+#         'ffmpeg',
+#         '-y', '-f', 'rawvideo', '-vcodec', 'rawvideo',
+#         '-pix_fmt', 'bgr24', '-s', '640x480', '-r', '30',
+#         '-i', '-',
+#         '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+#         '-f', 'flv', 'rtmp://localhost/live/stream'
+#     ], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    def monitor_ffmpeg_errors():
-        while True:
-            output = ffmpeg.stderr.readline()
-            if output == '' and ffmpeg.poll() is not None:
-                break
-            if output:
-                print(f"[FFmpeg STDERR] {output.strip()}")
+#     def monitor_ffmpeg_errors():
+#         while True:
+#             output = ffmpeg.stderr.readline()
+#             if output == '' and ffmpeg.poll() is not None:
+#                 break
+#             if output:
+#                 print(f"[FFmpeg STDERR] {output.strip()}")
 
-    threading.Thread(target=monitor_ffmpeg_errors, daemon=True).start()
+#     threading.Thread(target=monitor_ffmpeg_errors, daemon=True).start()
 
 # === [기본 설정값 정의] ===
 # GStreamer configuration
@@ -124,7 +124,7 @@ DEFAULT_CONFIG = {
     'conf_thresh': 0.3,
     'iou_threshold': 0.2,
     'max_age': 60,
-    'detection_interval': 3,
+    'detection_interval': 10,  # YOLO 추론 간격 (초 단위)
     'device': 'auto',
     'source': 'webcam',  # 반드시 'webcam'으로 설정
 }
@@ -307,6 +307,8 @@ def update_statistics_for_id(track_id, has_helmet, in_danger_zone):
         if in_danger_zone and not has_helmet and not id_stats[track_id]['danger_event_counted']:
             total_danger_events += 1
             id_stats[track_id]['danger_event_counted'] = True
+            helmet_controller.set_helmet_status("removed")
+            print("removed(1)")
             
             # Record danger event in database
             if db_manager:
@@ -315,7 +317,24 @@ def update_statistics_for_id(track_id, has_helmet, in_danger_zone):
                     event_type='no_helmet_in_danger_zone',
                     description=f'Person {track_id} entered danger zone without helmet'
                 )
-        
+            
+                
+                    
+        if in_danger_zone and has_helmet and not id_stats[track_id]['danger_event_counted']:
+            total_danger_events += 1
+            id_stats[track_id]['danger_event_counted'] = True
+            helmet_controller.set_helmet_status("removed")
+            print("removed(1)")
+            
+            # Record danger event in database
+            if db_manager:
+                db_manager.record_danger_event(
+                    track_id=track_id,
+                    event_type='no_helmet_in_danger_zone',
+                    description=f'Person {track_id} entered danger zone without helmet'
+                )
+    
+
         # Update tracked object in database
         if db_manager:
             db_manager.update_tracked_object(track_id, has_helmet, in_danger_zone)
@@ -325,9 +344,11 @@ def update_statistics_for_id(track_id, has_helmet, in_danger_zone):
             if not has_helmet:
                 # 헬멧을 안 쓰거나 위험구역에 있으면 "removed" 상태로 설정
                 helmet_controller.set_helmet_status("removed")
-            else:
+                print("removed(1)")
+            elif has_helmet and not in_danger_zone:
                 # 헬멧을 쓰고 위험구역에 없으면 "wearing" 상태로 설정
                 helmet_controller.set_helmet_status("wearing")
+                print("wearing(1)")
         
     else:
         # Update existing ID stats if state changed
@@ -353,16 +374,9 @@ def update_statistics_for_id(track_id, has_helmet, in_danger_zone):
             if in_danger_zone and not has_helmet and not current_stats['danger_event_counted']:
                 total_danger_events += 1
                 current_stats['danger_event_counted'] = True
+                helmet_controller.set_helmet_status("removed")
+                print("removed(2)")
                 
-                # # 헬멧 상태에 따라 자동 제어 (기존 ID 업데이트 시)
-                # if helmet_controller:
-                #     if not has_helmet:
-                #         # 헬멧을 안 쓰거나 위험구역에 있으면 "removed" 상태로 설정
-                #         helmet_controller.set_helmet_status("removed")
-                #     else:
-                #         # 헬멧을 쓰고 위험구역에 없으면 "wearing" 상태로 설정
-                #         helmet_controller.set_helmet_status("wearing")
-                        
                 # Record danger event in database
                 if db_manager:
                     db_manager.record_danger_event(
@@ -370,6 +384,19 @@ def update_statistics_for_id(track_id, has_helmet, in_danger_zone):
                         event_type='no_helmet_in_danger_zone',
                         description=f'Person {track_id} entered danger zone without helmet'
                     )
+            elif in_danger_zone and has_helmet and not current_stats['danger_event_counted']:
+                    total_danger_events += 1
+                    current_stats['danger_event_counted'] = True
+                    helmet_controller.set_helmet_status("removed")
+                    print("removed(2)")                    
+                    
+                    # Record danger event in database
+                    if db_manager:
+                        db_manager.record_danger_event(
+                            track_id=track_id,
+                            event_type='no_helmet_in_danger_zone',
+                            description=f'Person {track_id} entered danger zone without helmet'
+                        )
         
         # Update tracked object in database
         if db_manager:
@@ -380,9 +407,11 @@ def update_statistics_for_id(track_id, has_helmet, in_danger_zone):
             if not has_helmet:
                 # 헬멧을 안 쓰거나 위험구역에 있으면 "removed" 상태로 설정
                 helmet_controller.set_helmet_status("removed")
-            else:
+                print("removed(2)")
+            elif has_helmet and not in_danger_zone:
                 # 헬멧을 쓰고 위험구역에 없으면 "wearing" 상태로 설정
                 helmet_controller.set_helmet_status("wearing")
+                print("wearing(2)")
         
         
 
@@ -528,8 +557,9 @@ def camera_loop():
                 # Update frame stats
                 frame_stats.update(current_frame_stats)
                 
-                # Save frame statistics to database (every 30 frames to avoid too much data)
-                if db_manager and frames_processed % 30 == 0:
+                # Save frame statistics to database (every 60 frames to avoid too much data)
+                # 60프레임마다 데이터베이스에 저장
+                if db_manager and frames_processed % 60 == 0:
                     db_manager.save_frame_statistics(current_frame_stats, frames_processed)
                 
             else:
