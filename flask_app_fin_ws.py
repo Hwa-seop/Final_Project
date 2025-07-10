@@ -22,14 +22,10 @@ import subprocess
 import signal
 import sys
 import json
-from tcp_helmet_module import HelmetController
-
-helmet_controller = HelmetController()
-helmet_controller.start_server()
-
 from unified_roi_tracker_module_fin import UnifiedROITracker
 from database_manager_patched import DatabaseManager, init_database, get_database_manager
 from face_unified import FaceUnified  # FaceUnified 모듈 경로에 맞게 조정
+from tcp_helmet_ws import HelmetController  # TCP 헬멧 제어 모듈 추가
 face_unified = FaceUnified() 
 
 import warnings
@@ -63,6 +59,9 @@ total_danger_events = 0  # 총 위험 이벤트 카운터 (누적)
 # Database manager
 db_manager = None
 current_session_id = None
+
+# Helmet controller
+helmet_controller = None
 
 # 카메라 모드 변수
 FFMPEG_MODE = False  # FFMPEG 모드 (FFmpeg를 통한 스트리밍)
@@ -138,6 +137,35 @@ def get_cached_config():
     if _config_cache is None:
         _config_cache = DEFAULT_CONFIG.copy()
     return _config_cache
+
+# === [헬멧 컨트롤러 초기화] ===
+def initialize_helmet_controller():
+    """
+    헬멧 컨트롤러를 초기화합니다.
+    
+    Returns:
+        bool: 헬멧 컨트롤러 초기화 성공 여부
+    """
+    global helmet_controller
+    
+    try:
+        helmet_controller = HelmetController(host="0.0.0.0", port=8000)
+        
+        # 헬멧 상태 변경 콜백 함수 설정
+        def on_helmet_status_change(status, message):
+            if status == "removed":
+                print("🚨 헬멧 벗음 감지! LED와 부저가 켜져서 알림을 보냅니다.")
+            elif status == "wearing":
+                print("✅ 헬멧 착용 확인! LED와 부저가 꺼져서 알림을 해제합니다.")
+        
+        helmet_controller.set_status_callback(on_helmet_status_change)
+        helmet_controller.start_server()
+        
+        print("✅ 헬멧 컨트롤러 초기화 완료")
+        return True
+    except Exception as e:
+        print(f"❌ 헬멧 컨트롤러 초기화 오류: {e}")
+        return False
 
 # === [DB 연결 초기화] ===
 def initialize_database():
@@ -257,13 +285,14 @@ def initialize_camera():
 def update_statistics_for_id(track_id, has_helmet, in_danger_zone):
     """
     특정 트랙 ID의 통계를 업데이트합니다. 중복 카운팅을 방지합니다.
+    헬멧 상태에 따라 자동으로 헬멧 컨트롤러에 신호를 전송합니다.
     
     Args:
         track_id (int): 추적 객체의 고유 ID
         has_helmet (bool): 헬멧 착용 여부
         in_danger_zone (bool): 위험 구역 내 위치 여부
     """
-    global processed_ids, id_stats, total_danger_events, db_manager
+    global processed_ids, id_stats, total_danger_events, db_manager, helmet_controller
     
     if track_id not in processed_ids:
         # First time seeing this ID
@@ -291,6 +320,15 @@ def update_statistics_for_id(track_id, has_helmet, in_danger_zone):
         if db_manager:
             db_manager.update_tracked_object(track_id, has_helmet, in_danger_zone)
             
+        # 헬멧 상태에 따라 자동 제어
+        if helmet_controller:
+            if not has_helmet:
+                # 헬멧을 안 쓰거나 위험구역에 있으면 "removed" 상태로 설정
+                helmet_controller.set_helmet_status("removed")
+            else:
+                # 헬멧을 쓰고 위험구역에 없으면 "wearing" 상태로 설정
+                helmet_controller.set_helmet_status("wearing")
+        
     else:
         # Update existing ID stats if state changed
         current_stats = id_stats[track_id]
@@ -316,6 +354,15 @@ def update_statistics_for_id(track_id, has_helmet, in_danger_zone):
                 total_danger_events += 1
                 current_stats['danger_event_counted'] = True
                 
+                # # 헬멧 상태에 따라 자동 제어 (기존 ID 업데이트 시)
+                # if helmet_controller:
+                #     if not has_helmet:
+                #         # 헬멧을 안 쓰거나 위험구역에 있으면 "removed" 상태로 설정
+                #         helmet_controller.set_helmet_status("removed")
+                #     else:
+                #         # 헬멧을 쓰고 위험구역에 없으면 "wearing" 상태로 설정
+                #         helmet_controller.set_helmet_status("wearing")
+                        
                 # Record danger event in database
                 if db_manager:
                     db_manager.record_danger_event(
@@ -327,6 +374,17 @@ def update_statistics_for_id(track_id, has_helmet, in_danger_zone):
         # Update tracked object in database
         if db_manager:
             db_manager.update_tracked_object(track_id, has_helmet, in_danger_zone)
+            
+        # 헬멧 상태에 따라 자동 제어 (기존 ID 업데이트 시)
+        if helmet_controller:
+            if not has_helmet:
+                # 헬멧을 안 쓰거나 위험구역에 있으면 "removed" 상태로 설정
+                helmet_controller.set_helmet_status("removed")
+            else:
+                # 헬멧을 쓰고 위험구역에 없으면 "wearing" 상태로 설정
+                helmet_controller.set_helmet_status("wearing")
+        
+        
 
 def get_current_statistics():
     """
@@ -455,11 +513,6 @@ def camera_loop():
                     for track_id in tracker.id_has_helmet:
                         has_helmet = tracker.id_has_helmet.get(track_id, False)
                         in_danger_zone = tracker.id_in_danger_zone.get(track_id, False)
-                            if in_danger_zone and not has_helmet:
-                                helmet_controller.set_helmet_status("removed")  # 경고
-                            elif has_helmet:
-                                helmet_controller.set_helmet_status("wearing")  # 정상 상태
-
                         update_statistics_for_id(track_id, has_helmet, in_danger_zone)
                 
                 # Use frame_stats directly for current frame statistics
@@ -537,12 +590,17 @@ def shutdown_server():
     
     카메라를 해제하고, 데이터베이스 연결을 종료하며, 모니터링 세션을 끝냅니다.
     """
-    global is_running, camera, db_manager, current_session_id
+    global is_running, camera, db_manager, current_session_id, helmet_controller
     print("\n🛑 서버를 종료합니다...")
     is_running = False
     
     if camera:
         camera.release()
+    
+    # Stop helmet controller
+    if helmet_controller:
+        helmet_controller.stop_server()
+        print("헬멧 컨트롤러가 중지되었습니다.")
     
     # End monitoring session
     if db_manager and current_session_id:
@@ -887,6 +945,77 @@ def get_database_stats():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)})
 
+@app.route('/api/helmet/status')
+def get_helmet_status():
+    """
+    헬멧 컨트롤러 상태를 반환합니다.
+    
+    Returns:
+        JSON: 헬멧 컨트롤러 상태 정보
+    """
+    global helmet_controller
+    
+    if not helmet_controller:
+        return jsonify({
+            "status": "error", 
+            "message": "Helmet controller not initialized",
+            "helmet_status": "unknown",
+            "is_connected": False
+        })
+    
+    try:
+        return jsonify({
+            "status": "success",
+            "helmet_status": helmet_controller.get_helmet_status(),
+            "is_connected": helmet_controller.is_connected(),
+            "server_running": helmet_controller.is_running
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/api/helmet/control', methods=['POST'])
+def control_helmet():
+    """
+    헬멧을 수동으로 제어합니다.
+    
+    POST 데이터:
+    - action: "led_on", "led_off", "buzzer_on", "buzzer_off", "emergency_alert", "clear_alert"
+    
+    Returns:
+        JSON: 제어 결과
+    """
+    global helmet_controller
+    
+    if not helmet_controller:
+        return jsonify({"status": "error", "message": "Helmet controller not initialized"})
+    
+    data = request.get_json()
+    action = data.get('action')
+    
+    try:
+        if action == "led_on":
+            success = helmet_controller.led_on()
+        elif action == "led_off":
+            success = helmet_controller.led_off()
+        elif action == "buzzer_on":
+            success = helmet_controller.buzzer_on()
+        elif action == "buzzer_off":
+            success = helmet_controller.buzzer_off()
+        elif action == "emergency_alert":
+            success = helmet_controller.emergency_alert()
+        elif action == "clear_alert":
+            success = helmet_controller.clear_alert()
+        else:
+            return jsonify({"status": "error", "message": "Unknown action"})
+        
+        if success:
+            return jsonify({"status": "success", "message": f"Helmet {action} executed"})
+        else:
+            return jsonify({"status": "error", "message": f"Failed to execute {action}"})
+            
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
 @app.route('/api/register_face', methods=['POST'])
 def register_face():
     """
@@ -936,6 +1065,9 @@ if __name__ == '__main__':
     
     # Initialize database
     db_initialized = initialize_database()
+    
+    # Initialize helmet controller
+    helmet_initialized = initialize_helmet_controller()
     
     # Initialize camera and tracker
     if initialize_camera():

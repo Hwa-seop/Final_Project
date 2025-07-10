@@ -216,7 +216,8 @@ class FaceUnified:
                 cv2.imwrite(temp_face_path, face_img)
                 try:
                     found, username, confidence = self.face_manager.verify_face(temp_face_path, self.threshold, enforce_detection=False)
-                    if found:
+                    if found and confidence > 85: #condidence 신뢰도 범위(1~100)
+                        
                         label = f"{username}"
                         color = (0, 255, 0)
                     else:
@@ -282,7 +283,7 @@ class FaceUnified:
                         confidence = (1 - dist) * 100
                         matches.append((username, confidence, dist))
                     matches.sort(key=lambda x: x[1], reverse=True)
-                    if matches and matches[0][1] >= 50:
+                    if matches and matches[0][1] >= 80:
                         label = f"{matches[0][0]}"
                         color = (0, 255, 0)
                     else:
