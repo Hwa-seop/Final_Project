@@ -16,4 +16,5 @@ opencv
 FACE_RECOGNITION_GUIDE.md
 FLASK_USAGE_GUIDE.md
 README_NGROK.md
+.gitignore
 
