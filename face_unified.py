@@ -343,23 +343,23 @@ class FaceUnified:
     
     def show_menu(self):
         """메뉴 표시"""
-        print("\n" + "="*50)
-        print("🎯 Unified Face Recognition Program")
-        print("="*50)
+        print("\n" + "="*40)
+        print("   Unified Face Recognition Program   ")
+        print("="*40)
         print("1. Register Face")
         print("2. Real-time Recognition")
-        print("3. Face Analysis")
-        print("4. Show Registered Users")
-        print("5. Delete User Data")
-        print("6. Exit")
-        print("="*50)
+        # print("3. Face Analysis")
+        print("3. Show Registered Users")
+        print("4. Delete User Data")
+        print("5. Exit")
+        print("="*40)
     
     def run(self):
         """메인 실행 함수"""
         while True:
             self.show_menu()
             try:
-                choice = input("Select an option (1-6): ").strip()
+                choice = input("Select an option (1-5): ").strip()
                 if choice == "1":
                     username = input("Enter user name to register: ").strip()
                     if username:
@@ -368,17 +368,17 @@ class FaceUnified:
                         print("[X] Please enter a name.")
                 elif choice == "2":
                     self.realtime_face_recognition()
+                # elif choice == "3":
+                #     self.detailed_face_analysis()
                 elif choice == "3":
-                    self.detailed_face_analysis()
-                elif choice == "4":
                     self.show_registered_users()
-                elif choice == "5":
+                elif choice == "4":
                     self.delete_user()
-                elif choice == "6":
+                elif choice == "5":
                     print("[EXIT] Program terminated.")
                     break
                 else:
-                    print("[X] Please enter a number between 1 and 6.")
+                    print("[X] Please enter a number between 1 and 5.")
             except KeyboardInterrupt:
                 print("\n[EXIT] Program terminated.")
                 break
@@ -386,7 +386,7 @@ class FaceUnified:
                 print(f"[ERROR] {e}")
 
 def main():
-    print("🎯 Unified Face Recognition Program started...")
+    print("Unified Face Recognition Program started...")
     face_unified = FaceUnified()
     face_unified.run()
 
