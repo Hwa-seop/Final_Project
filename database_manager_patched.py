@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""
-Database Manager for AI Safety Monitoring System (MySQL) - Patched Version
-
-This module handles database connections and operations for storing
-tracking statistics, events, and system logs with automatic reconnection.
-"""
 
 import mysql.connector
 import mysql.connector.pooling

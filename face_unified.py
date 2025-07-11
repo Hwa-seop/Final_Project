@@ -2,7 +2,7 @@ import os
 import sys
 import cv2
 import numpy as np
-from face_manager_fin import FaceManager
+from face_manager import FaceManager
 
 # TensorFlow 경고 메시지 숨기기
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 이 Flask 앱은 실시간 헬멧 검출 및 ROI 추적을 위한 웹 인터페이스를 제공합니다.
 사용자는 웹 브라우저를 통해 실시간 비디오 스트림을 보고, 설정을 제어하고, 통계를 모니터링할 수 있습니다.
@@ -22,10 +21,10 @@ import subprocess
 import signal
 import sys
 import json
-from unified_roi_tracker_module_fin import UnifiedROITracker
+from unified_roi_tracker_module import UnifiedROITracker
 from database_manager_patched import DatabaseManager, init_database, get_database_manager
 from face_unified import FaceUnified  # FaceUnified 모듈 경로에 맞게 조정
-from tcp_helmet_ws import HelmetController  # TCP 헬멧 제어 모듈 추가
+from tcp_helmet import HelmetController  # TCP 헬멧 제어 모듈 추가
 face_unified = FaceUnified() 
 
 import warnings
